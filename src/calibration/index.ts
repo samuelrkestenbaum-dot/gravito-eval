@@ -92,6 +92,13 @@ export function evaluate(
   // Step 6: Verdict
   const verdict = determineVerdict(detection, matchResult);
 
+  // Flatten all match pairs
+  const allMatches = [
+    ...matchResult.strictMatches,
+    ...matchResult.crossCategoryMatches,
+    ...matchResult.conceptualMatches,
+  ];
+
   return {
     detection,
     ranking,
@@ -102,6 +109,9 @@ export function evaluate(
       crossCategory: matchResult.summary.cross_category_matched,
       conceptual: matchResult.summary.conceptual_matched,
     },
+    matches: allMatches,
+    aiOnly: matchResult.aiOnly,
+    humanOnly: matchResult.humanOnly,
     adjustedPrecision,
     verdict,
   };

@@ -144,6 +144,12 @@ export interface EvalResult {
     crossCategory: number;
     conceptual: number;
   };
+  /** Individual match pairs for detailed inspection */
+  matches: MatchPair[];
+  /** Findings only in AI output (novel/unmatched) */
+  aiOnly: Finding[];
+  /** Findings only in human output (missed by AI) */
+  humanOnly: Finding[];
   adjustedPrecision?: number;
   verdict: "PASS" | "PARTIAL" | "FAIL" | "INSUFFICIENT_DATA";
 }

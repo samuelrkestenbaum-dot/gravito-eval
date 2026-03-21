@@ -1,16 +1,10 @@
 # Gravito Eval
 
-Measure how closely your AI matches human judgment — and where it adds new signal.
-
----
-
-## Run in 10 seconds
+Measure how closely your AI matches human judgment — and where it finds things humans missed.
 
 ```bash
 npx gravito-eval run ./examples/basic
 ```
-
-Output:
 
 ```
 Gravito Eval Results
@@ -24,69 +18,18 @@ Novel Signal: 67% (validated)
 
 Interpretation:
 - Strong alignment with human judgment
-- Additional issues detected beyond baseline
-
-Next Step:
-
-  Want this to run continuously and fix issues automatically?
-
-  → Try Gravito: https://gravito.ai/pilot
+- AI found significant issues humans missed
 ```
 
 ---
 
-## What this does
+## What this tells you
 
-Gravito Eval helps you answer:
+Your AI found 75% of what humans found (Recall).
+Half of what it flagged was relevant (Precision).
+And 67% of its unique findings were genuinely useful (Novel Signal).
 
-- **Is my AI actually correct?**
-- **Where does it disagree with humans?**
-- **Is it finding new, valuable insights?**
-
----
-
-## Core Concepts
-
-### Alignment
-
-How often AI finds the same issues as humans.
-
-→ Recall, Precision, F1
-
-### Priority Agreement
-
-Does AI rank problems the same way?
-
-→ Top-K overlap
-
-### Novel Signal
-
-What AI finds that humans missed — and whether it's valid.
-
----
-
-## Example
-
-Input:
-
-```
-AI Findings:
-- Missing CTA
-- Weak hierarchy
-- Inconsistent tone
-
-Human Findings:
-- No clear primary action
-- Confusing layout
-```
-
-Output:
-
-```
-Recall: 67%
-Precision: 75%
-Novel Signal: 33%
-```
+That means your AI is catching real issues humans miss — but also generating some noise.
 
 ---
 
@@ -96,12 +39,10 @@ Novel Signal: 33%
 npm install gravito-eval
 ```
 
----
-
-## Usage
+Or run directly:
 
 ```bash
-npx gravito-eval run ./data
+npx gravito-eval run ./your-data.json
 ```
 
 ---
@@ -111,36 +52,29 @@ npx gravito-eval run ./data
 ```json
 {
   "aiFindings": [
-    { "category": "conversion", "description": "Missing CTA" }
+    { "id": "ai-1", "description": "Missing CTA", "category": "conversion", "severity": "high" }
   ],
   "humanFindings": [
-    { "category": "conversion", "description": "No clear action" }
+    { "id": "h-1", "description": "No clear action", "category": "conversion", "severity": "high" }
   ]
 }
 ```
 
----
+Save as `input.json` in a directory, then run:
 
-## What makes this different
-
-Most eval tools measure accuracy.
-
-Gravito Eval measures:
-
-- **alignment** with human judgment
-- **disagreement** patterns
-- **validated novel insight**
-
-It tells you not just if AI is right, but if it is **useful**.
+```bash
+gravito-eval run ./my-directory
+```
 
 ---
 
-## Use Cases
+## Flags
 
-- LLM output evaluation
-- Agent QA systems
-- UX / product audits
-- Compliance review workflows
+```bash
+gravito-eval run <path> --explain     # Show why each match was made
+gravito-eval run <path> --json        # Raw JSON output
+gravito-eval run <path> --no-telemetry
+```
 
 ---
 
@@ -153,134 +87,51 @@ const result = evaluate(aiFindings, humanFindings);
 
 result.detection.recall     // How much of what humans find does the AI catch?
 result.detection.precision  // How much of what the AI finds is actually relevant?
-result.detection.f1         // Harmonic mean of recall and precision
+result.detection.f1         // Harmonic mean
 result.novelSignal          // What did the AI find that humans missed?
 result.verdict              // PASS | PARTIAL | FAIL | INSUFFICIENT_DATA
 ```
 
-### With Adjudications
-
-```typescript
-import { evaluate } from "gravito-eval";
-
-const result = evaluate(aiFindings, humanFindings, {
-  adjudications: [
-    { findingId: "ai-3", label: "VALID", reasoning: "Genuine issue humans missed" },
-    { findingId: "ai-4", label: "LOW_VALUE", reasoning: "True but too minor" },
-  ]
-});
-
-result.novelSignal?.validatedNovelRate  // Real human-validated rate
-result.adjustedPrecision                // Accounts for valid novel signal
-```
-
-### Individual Modules
-
-```typescript
-import { multiPassMatch, computeNovelSignal, scoreFindings } from "gravito-eval";
-
-// Just matching
-const matches = multiPassMatch(aiFindings, humanFindings);
-
-// Just novel signal
-const signal = computeNovelSignal(aiOnlyFindings, adjudications);
-
-// Just confidence scoring
-const scored = scoreFindings(aiFindings);
-```
-
 ---
 
-## Data Format
+## What this is for
 
-```typescript
-// Finding
-{
-  id: string;
-  description: string;
-  category: string;
-  severity: "low" | "medium" | "high" | "critical";
-  location?: string;
-  keywords?: string[];
-}
-
-// Adjudication
-{
-  findingId: string;
-  label: "VALID" | "INVALID" | "DUPLICATE" | "LOW_VALUE";
-  reasoning?: string;
-}
-```
-
----
-
-## Examples
-
-Three examples included:
-
-| Example | Use Case | Run |
-|---|---|---|
-| `basic` | Simple CTA/hierarchy audit | `npx gravito-eval run ./examples/basic` |
-| `website-audit` | Full UX/trust audit with adjudications | `npx gravito-eval run ./examples/website-audit` |
-| `agent-eval` | AI code review agent | `npx gravito-eval run ./examples/agent-eval` |
-
----
-
-## Current Status
-
-This framework is actively used in production systems.
-
-Metrics are based on ongoing calibration studies and continue to improve as more human validation data is added.
+- Evaluating LLM outputs against human baselines
+- QA for AI agents (code review, content audit, compliance)
+- Measuring whether your AI is useful, not just accurate
 
 ---
 
 ## What this is NOT
 
-This is not a full AI system.
-
-It does not:
-- generate outputs
-- fix issues
-- run workflows
-
-It **evaluates** and **measures**.
+This does not generate outputs, fix issues, or run workflows.
+It **measures** and **evaluates**.
 
 ---
 
 ## Telemetry
 
-Gravito Eval collects anonymous usage data to help improve the tool:
+Anonymous usage data (timestamp, version, command name) is collected to improve the tool.
+No findings, file paths, or PII.
 
-- Timestamp
-- Package version
-- Command name (e.g. `run`)
-
-No findings data, file paths, or PII is collected.
-
-Disable with:
+Disable:
 
 ```bash
 GRAVITO_TELEMETRY=0 gravito-eval run ./data
-# or
-gravito-eval run ./data --no-telemetry
 ```
 
-Respects the `DO_NOT_TRACK=1` environment variable.
+Respects `DO_NOT_TRACK=1`.
 
 ---
 
 ## Gravito
 
-This project is part of [Gravito](https://gravito.ai).
+This is the open-source evaluation layer behind [Gravito](https://gravito.ai) — continuous AI governance that scans, calibrates, and self-corrects.
 
-Gravito uses this evaluation layer to power continuous AI governance and self-correction.
+**Want this running continuously on your system?**
 
-Want this running continuously on your system?
-
-→ [Request a pilot](https://gravito.ai/pilot)
+[Request a pilot →](https://gravito.ai/pilot)
 
 ---
 
-## License
-
-MIT
+MIT License

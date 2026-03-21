@@ -36,9 +36,9 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/empathiq-ai/gravito-eval.git"
+    "url": "https://github.com/samuelrkestenbaum-dot/gravito-eval.git"
   },
-  "homepage": "https://github.com/empathiq-ai/gravito-eval#readme",
+  "homepage": "https://gravito.ai",
   "engines": {
     "node": ">=18.0.0"
   },
