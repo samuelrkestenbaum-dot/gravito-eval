@@ -30,7 +30,7 @@ Next Step:
 
   Want this to run continuously and fix issues automatically?
 
-  → Try Gravito: https://empathiq-api-hbjrlavx.manus.space/pilot
+  → Try Gravito: https://gravito.ai/pilot
 ```
 
 ---
@@ -271,13 +271,13 @@ Respects the `DO_NOT_TRACK=1` environment variable.
 
 ## Gravito
 
-This project is part of [Gravito](https://empathiq-api-hbjrlavx.manus.space).
+This project is part of [Gravito](https://gravito.ai).
 
 Gravito uses this evaluation layer to power continuous AI governance and self-correction.
 
 Want this running continuously on your system?
 
-→ [Request a pilot](https://empathiq-api-hbjrlavx.manus.space/pilot)
+→ [Request a pilot](https://gravito.ai/pilot)
 
 ---
 

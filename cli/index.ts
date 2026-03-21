@@ -94,7 +94,7 @@ function printNextStep(): void {
   console.log();
   console.log("  Want this to run continuously and fix issues automatically?");
   console.log();
-  console.log("  → Try Gravito: https://empathiq-api-hbjrlavx.manus.space/pilot");
+  console.log("  → Try Gravito: https://gravito.ai/pilot");
   console.log();
 }
 

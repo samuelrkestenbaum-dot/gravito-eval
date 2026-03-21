@@ -11,7 +11,7 @@ import * as https from "https";
 import * as fs from "fs";
 import * as path from "path";
 
-const TELEMETRY_ENDPOINT = "https://empathiq-api-hbjrlavx.manus.space/api/telemetry/eval";
+const TELEMETRY_ENDPOINT = "https://gravito.ai/api/telemetry/eval";
 
 function isDisabled(): boolean {
   return (
