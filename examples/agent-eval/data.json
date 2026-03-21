@@ -1,0 +1,123 @@
+{
+  "aiFindings": [
+    {
+      "id": "agent-1",
+      "description": "Agent recommended upgrading database to PostgreSQL 16 without checking application compatibility with new JSON path syntax",
+      "category": "compliance",
+      "severity": "high",
+      "location": "Database migration recommendation",
+      "keywords": ["database", "PostgreSQL", "compatibility", "migration", "upgrade"]
+    },
+    {
+      "id": "agent-2",
+      "description": "Agent correctly identified memory leak in the event listener cleanup but suggested a fix that introduces a race condition",
+      "category": "performance",
+      "severity": "high",
+      "location": "Event handler module",
+      "keywords": ["memory leak", "event listener", "race condition", "fix"]
+    },
+    {
+      "id": "agent-3",
+      "description": "Agent flagged the authentication token expiry as too long at 24 hours, recommending 1 hour with refresh tokens",
+      "category": "trust",
+      "severity": "medium",
+      "location": "Auth configuration",
+      "keywords": ["authentication", "token", "expiry", "security", "refresh"]
+    },
+    {
+      "id": "agent-4",
+      "description": "Agent suggested adding rate limiting to the public API endpoints which currently have none",
+      "category": "trust",
+      "severity": "high",
+      "location": "API gateway configuration",
+      "keywords": ["rate limiting", "API", "security", "gateway", "throttling"]
+    },
+    {
+      "id": "agent-5",
+      "description": "Agent recommended splitting the monolithic CSS bundle into route-based chunks for better performance",
+      "category": "performance",
+      "severity": "medium",
+      "location": "Build configuration",
+      "keywords": ["CSS", "bundle", "splitting", "performance", "routes"]
+    },
+    {
+      "id": "agent-6",
+      "description": "Agent identified that error logging sends full stack traces to the client in production mode",
+      "category": "trust",
+      "severity": "critical",
+      "location": "Error handling middleware",
+      "keywords": ["error", "stack trace", "production", "security", "logging"]
+    },
+    {
+      "id": "agent-7",
+      "description": "Agent suggested implementing circuit breaker pattern for third-party API calls that currently fail silently",
+      "category": "performance",
+      "severity": "medium",
+      "location": "External API integration layer",
+      "keywords": ["circuit breaker", "API", "resilience", "failure", "pattern"]
+    },
+    {
+      "id": "agent-8",
+      "description": "Agent recommended adding structured logging with correlation IDs for distributed tracing",
+      "category": "content",
+      "severity": "low",
+      "location": "Logging infrastructure",
+      "keywords": ["logging", "structured", "correlation", "tracing", "observability"]
+    }
+  ],
+  "humanFindings": [
+    {
+      "id": "review-1",
+      "description": "The PostgreSQL upgrade recommendation doesn't account for breaking changes in JSON handling",
+      "category": "compliance",
+      "severity": "high",
+      "location": "Database migration",
+      "keywords": ["PostgreSQL", "upgrade", "breaking changes", "JSON"]
+    },
+    {
+      "id": "review-2",
+      "description": "Memory leak fix introduces a potential race condition in concurrent request handling",
+      "category": "performance",
+      "severity": "critical",
+      "location": "Event handler",
+      "keywords": ["memory leak", "race condition", "concurrent"]
+    },
+    {
+      "id": "review-3",
+      "description": "No rate limiting on public API — this is a critical security gap",
+      "category": "trust",
+      "severity": "critical",
+      "location": "API endpoints",
+      "keywords": ["rate limiting", "API", "security"]
+    },
+    {
+      "id": "review-4",
+      "description": "Stack traces are exposed to clients in production error responses",
+      "category": "trust",
+      "severity": "critical",
+      "location": "Error middleware",
+      "keywords": ["stack trace", "production", "error", "exposed"]
+    },
+    {
+      "id": "review-5",
+      "description": "Token expiry of 24 hours is too long for a financial application — should be 15 minutes max",
+      "category": "trust",
+      "severity": "high",
+      "location": "Auth config",
+      "keywords": ["token", "expiry", "security", "financial"]
+    },
+    {
+      "id": "review-6",
+      "description": "No health check endpoint exists for the load balancer to monitor service availability",
+      "category": "performance",
+      "severity": "medium",
+      "location": "API infrastructure",
+      "keywords": ["health check", "load balancer", "monitoring", "availability"]
+    }
+  ],
+  "adjudications": [
+    { "findingId": "agent-5", "label": "VALID", "reasoning": "CSS bundle splitting is a legitimate performance optimization the human reviewer missed" },
+    { "findingId": "agent-7", "label": "VALID", "reasoning": "Circuit breaker pattern is important for production resilience — valid novel finding" },
+    { "findingId": "agent-8", "label": "LOW_VALUE", "reasoning": "Structured logging is nice-to-have but not a critical finding for this review scope" }
+  ]
+}

@@ -1,0 +1,94 @@
+{
+  "aiFindings": [
+    {
+      "id": "ai-1",
+      "description": "Missing alt text on hero image reduces accessibility for screen readers",
+      "category": "compliance",
+      "severity": "high",
+      "location": "Homepage hero section",
+      "keywords": ["alt text", "accessibility", "image", "screen reader"]
+    },
+    {
+      "id": "ai-2",
+      "description": "Contact form lacks input validation, allowing empty submissions",
+      "category": "conversion",
+      "severity": "medium",
+      "location": "Contact page form",
+      "keywords": ["form", "validation", "input", "contact"]
+    },
+    {
+      "id": "ai-3",
+      "description": "Navigation menu does not indicate current page with active state styling",
+      "category": "navigation",
+      "severity": "low",
+      "location": "Global navigation bar",
+      "keywords": ["navigation", "active state", "menu", "current page"]
+    },
+    {
+      "id": "ai-4",
+      "description": "Low contrast ratio between body text and background fails WCAG AA standards",
+      "category": "compliance",
+      "severity": "high",
+      "location": "Body text throughout site",
+      "keywords": ["contrast", "WCAG", "accessibility", "text color"]
+    },
+    {
+      "id": "ai-5",
+      "description": "Call-to-action button blends into surrounding content due to similar color scheme",
+      "category": "conversion",
+      "severity": "medium",
+      "location": "Pricing page CTA",
+      "keywords": ["CTA", "button", "color", "visibility"]
+    },
+    {
+      "id": "ai-6",
+      "description": "Page load time exceeds 4 seconds on mobile due to unoptimized images",
+      "category": "performance",
+      "severity": "high",
+      "location": "All pages with images",
+      "keywords": ["performance", "load time", "images", "mobile"]
+    }
+  ],
+  "humanFindings": [
+    {
+      "id": "human-1",
+      "description": "Hero image is missing alt text which hurts accessibility",
+      "category": "compliance",
+      "severity": "high",
+      "location": "Homepage",
+      "keywords": ["alt text", "accessibility", "hero"]
+    },
+    {
+      "id": "human-2",
+      "description": "The contact form can be submitted empty with no error messages shown",
+      "category": "conversion",
+      "severity": "high",
+      "location": "Contact page",
+      "keywords": ["form", "validation", "empty", "contact"]
+    },
+    {
+      "id": "human-3",
+      "description": "Text contrast is too low in several areas, hard to read on light backgrounds",
+      "category": "compliance",
+      "severity": "medium",
+      "location": "Multiple pages",
+      "keywords": ["contrast", "readability", "text"]
+    },
+    {
+      "id": "human-4",
+      "description": "The main CTA on pricing page is not prominent enough",
+      "category": "conversion",
+      "severity": "medium",
+      "location": "Pricing page",
+      "keywords": ["CTA", "pricing", "button"]
+    },
+    {
+      "id": "human-5",
+      "description": "Footer links are disorganized and some lead to 404 pages",
+      "category": "navigation",
+      "severity": "medium",
+      "location": "Footer",
+      "keywords": ["footer", "links", "404", "broken"]
+    }
+  ]
+}

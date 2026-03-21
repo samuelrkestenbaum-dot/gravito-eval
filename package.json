@@ -1,0 +1,50 @@
+{
+  "name": "gravito-eval",
+  "version": "0.1.0",
+  "description": "Measure how closely AI decisions match human judgment — and where they add new signal.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "gravito-eval": "dist/cli/index.js"
+  },
+  "files": [
+    "dist",
+    "examples",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run clean && npm run build"
+  },
+  "keywords": [
+    "ai-evaluation",
+    "alignment",
+    "calibration",
+    "precision",
+    "recall",
+    "f1-score",
+    "semantic-matching",
+    "novel-signal",
+    "human-ai-comparison",
+    "evaluation-framework"
+  ],
+  "author": "Gravito <hello@gravitoai.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/gravitoai/gravito-eval.git"
+  },
+  "homepage": "https://github.com/gravitoai/gravito-eval#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0"
+  }
+}
