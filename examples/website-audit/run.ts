@@ -10,51 +10,30 @@
  */
 
 import { evaluate } from "../../src";
-import data from "./data.json";
+import data from "./input.json";
 
-const result = evaluate(data.aiFindings, data.humanFindings, {
-  adjudications: data.adjudications,
+const result = evaluate(data.aiFindings as any, data.humanFindings as any, {
+  adjudications: data.adjudications as any,
 });
 
-console.log("=== Website Audit Evaluation ===\n");
-console.log(`AI findings:    ${data.aiFindings.length}`);
-console.log(`Human findings: ${data.humanFindings.length}`);
+console.log("Gravito Eval Results\n");
+console.log(`Recall: ${Math.round(result.detection.recall * 100)}%`);
+console.log(`Precision: ${Math.round(result.detection.precision * 100)}%`);
+console.log(`F1: ${Math.round(result.detection.f1 * 100)}%`);
 console.log();
-
-console.log("--- Detection ---");
-console.log(`Recall:    ${(result.detection.recall * 100).toFixed(1)}%`);
-console.log(`Precision: ${(result.detection.precision * 100).toFixed(1)}%`);
-console.log(`F1:        ${(result.detection.f1 * 100).toFixed(1)}%`);
-console.log(`Verdict:   ${result.verdict}`);
-console.log();
-
-console.log("--- Match Breakdown ---");
-console.log(`Strict:         ${result.matchBreakdown.strict}`);
-console.log(`Cross-category: ${result.matchBreakdown.crossCategory}`);
-console.log(`Conceptual:     ${result.matchBreakdown.conceptual}`);
-console.log();
-
-console.log("--- Ranking ---");
-console.log(`Top-3 Overlap:  ${(result.ranking.top3Overlap * 100).toFixed(1)}%`);
-console.log(`Top-5 Overlap:  ${(result.ranking.top5Overlap * 100).toFixed(1)}%`);
-console.log();
-
-console.log("--- Severity Agreement ---");
-console.log(`Weighted Kappa: ${result.severity.weightedKappa.toFixed(3)}`);
-console.log(`Mean Abs Error: ${result.severity.meanAbsoluteError.toFixed(2)} levels`);
-console.log();
-
+console.log(`Top-3 Agreement: ${Math.round(result.ranking.top3Overlap * 100)}%`);
 if (result.novelSignal) {
-  console.log("--- Novel Signal ---");
-  console.log(`Valid:      ${result.novelSignal.validCount} of ${result.novelSignal.totalAiOnly} AI-only`);
-  console.log(`Novel Rate: ${(result.novelSignal.validatedNovelRate * 100).toFixed(1)}%`);
-  console.log(`Strength:   ${result.novelSignal.systemStrength}`);
-  console.log();
+  console.log(`Novel Signal: ${Math.round(result.novelSignal.validatedNovelRate * 100)}% (validated)`);
 }
-
-if (result.adjustedPrecision !== undefined) {
-  console.log("--- Adjusted Precision ---");
-  console.log(`Raw:      ${(result.detection.precision * 100).toFixed(1)}%`);
-  console.log(`Adjusted: ${(result.adjustedPrecision * 100).toFixed(1)}%`);
-  console.log(`Lift:     +${((result.adjustedPrecision - result.detection.precision) * 100).toFixed(1)}%`);
+console.log();
+console.log("Interpretation:");
+if (result.detection.recall >= 0.7) {
+  console.log("- Strong alignment with human judgment");
+} else if (result.detection.recall >= 0.5) {
+  console.log("- Moderate alignment — some human findings missed");
+} else {
+  console.log("- Low alignment — many human findings missed");
+}
+if (result.novelSignal && result.novelSignal.validatedNovelRate >= 0.25) {
+  console.log("- Additional issues detected beyond baseline");
 }

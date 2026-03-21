@@ -1,0 +1,76 @@
+{
+  "aiFindings": [
+    {
+      "id": "ai-1",
+      "description": "Missing primary CTA button on homepage — no clear action for visitors to take",
+      "category": "conversion",
+      "severity": "high",
+      "keywords": ["CTA", "button", "action", "homepage", "conversion"]
+    },
+    {
+      "id": "ai-2",
+      "description": "Weak value proposition headline — does not explain what the product does or its core benefit",
+      "category": "content",
+      "severity": "high",
+      "keywords": ["headline", "value proposition", "product", "benefit", "explain"]
+    },
+    {
+      "id": "ai-3",
+      "description": "Confusing visual hierarchy — competing elements with similar weight make page hard to scan",
+      "category": "visual_hierarchy",
+      "severity": "medium",
+      "keywords": ["hierarchy", "layout", "confusing", "importance", "scanning"]
+    },
+    {
+      "id": "ai-4",
+      "description": "Inconsistent tone of voice across product and marketing pages",
+      "category": "content",
+      "severity": "low",
+      "keywords": ["tone", "voice", "consistency", "messaging"]
+    },
+    {
+      "id": "ai-5",
+      "description": "No trust indicators visible above the fold — missing testimonials or customer logos",
+      "category": "trust",
+      "severity": "medium",
+      "keywords": ["trust", "testimonials", "logos", "social proof"]
+    },
+    {
+      "id": "ai-6",
+      "description": "Navigation labels overlap in meaning — users cannot distinguish between sections",
+      "category": "navigation",
+      "severity": "medium",
+      "keywords": ["navigation", "labels", "overlap", "confusing", "sections"]
+    }
+  ],
+  "humanFindings": [
+    {
+      "id": "human-1",
+      "description": "No clear action button on the homepage — visitors don't know what to do next",
+      "category": "conversion",
+      "severity": "high",
+      "keywords": ["action", "button", "homepage", "CTA", "conversion"]
+    },
+    {
+      "id": "human-2",
+      "description": "Confusing layout — hard to tell what's most important on the page, hierarchy unclear",
+      "category": "visual_hierarchy",
+      "severity": "medium",
+      "keywords": ["layout", "confusing", "hierarchy", "importance"]
+    },
+    {
+      "id": "human-3",
+      "description": "Headline doesn't explain what the product does — weak value proposition",
+      "category": "content",
+      "severity": "high",
+      "keywords": ["headline", "product", "explain", "value proposition"]
+    },
+    {
+      "id": "human-4",
+      "description": "Footer links are broken — several lead to 404 pages",
+      "category": "navigation",
+      "severity": "medium",
+      "keywords": ["footer", "links", "broken", "404"]
+    }
+  ]
+}
