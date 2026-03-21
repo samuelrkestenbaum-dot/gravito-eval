@@ -4,15 +4,17 @@
  * Gravito Eval CLI
  *
  * Usage:
- *   gravito-eval run <path>          Run evaluation on a data file or directory
- *   gravito-eval run <path> --json   Output raw JSON instead of formatted text
- *   gravito-eval --help              Show help
- *   gravito-eval --version           Show version
+ *   gravito-eval run <path>                    Run evaluation on a data file or directory
+ *   gravito-eval run <path> --json             Output raw JSON instead of formatted text
+ *   gravito-eval run <path> --no-telemetry     Disable anonymous usage tracking
+ *   gravito-eval --help                        Show help
+ *   gravito-eval --version                     Show version
  */
 
 import * as fs from "fs";
 import * as path from "path";
 import { evaluate } from "../src/calibration";
+import { trackRun } from "../src/telemetry";
 import type { Finding, Adjudication, EvalResult } from "../src/types";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -52,6 +54,9 @@ function printResult(result: EvalResult): void {
   console.log("Interpretation:");
   printInterpretation(result);
   console.log();
+
+  // Conversion hook — the funnel from OSS → paid
+  printNextStep();
 }
 
 function printInterpretation(result: EvalResult): void {
@@ -84,6 +89,15 @@ function printInterpretation(result: EvalResult): void {
   }
 }
 
+function printNextStep(): void {
+  console.log("Next Step:");
+  console.log();
+  console.log("  Want this to run continuously and fix issues automatically?");
+  console.log();
+  console.log("  → Try Gravito: https://empathiq-api-hbjrlavx.manus.space/pilot");
+  console.log();
+}
+
 // ─── Data Loading ─────────────────────────────────────────────────────────
 
 interface EvalData {
@@ -97,8 +111,8 @@ function loadData(inputPath: string): EvalData {
 
   // Check if it's a directory with data.json or individual files
   if (fs.statSync(resolved).isDirectory()) {
-    // Try data.json first, then input.json
-    for (const name of ["data.json", "input.json"]) {
+    // Try input.json first, then data.json for backwards compat
+    for (const name of ["input.json", "data.json"]) {
       const file = path.join(resolved, name);
       if (fs.existsSync(file)) {
         return JSON.parse(fs.readFileSync(file, "utf-8"));
@@ -112,7 +126,7 @@ function loadData(inputPath: string): EvalData {
 
     if (!fs.existsSync(aiFile) || !fs.existsSync(humanFile)) {
       throw new Error(
-        `Directory must contain data.json, input.json, OR ai-findings.json + human-findings.json`
+        `Directory must contain input.json, data.json, OR ai-findings.json + human-findings.json`
       );
     }
 
@@ -139,16 +153,22 @@ function showHelp(): void {
 Gravito Eval — Measure AI-human alignment
 
 Usage:
-  gravito-eval run <path>          Evaluate AI findings against human findings
-  gravito-eval run <path> --json   Output raw JSON
-  gravito-eval --help              Show this help
-  gravito-eval --version           Show version
+  gravito-eval run <path>                    Evaluate AI findings against human findings
+  gravito-eval run <path> --json             Output raw JSON
+  gravito-eval run <path> --no-telemetry     Disable anonymous usage tracking
+  gravito-eval --help                        Show this help
+  gravito-eval --version                     Show version
 
 Input format:
   <path> can be:
   - A JSON file with { aiFindings, humanFindings, adjudications? }
-  - A directory containing data.json or input.json
+  - A directory containing input.json or data.json
   - A directory containing ai-findings.json + human-findings.json
+
+Telemetry:
+  Anonymous usage data (timestamp, version, command) is sent to help
+  improve the tool. No findings data or PII is collected.
+  Disable with: GRAVITO_TELEMETRY=0 or --no-telemetry
 
 Examples:
   gravito-eval run ./examples/basic
@@ -193,6 +213,9 @@ function main(): void {
   }
 
   const jsonOutput = args.includes("--json");
+
+  // Fire-and-forget telemetry (non-blocking)
+  trackRun("run");
 
   try {
     const data = loadData(args[1]);

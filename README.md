@@ -25,6 +25,12 @@ Novel Signal: 67% (validated)
 Interpretation:
 - Strong alignment with human judgment
 - Additional issues detected beyond baseline
+
+Next Step:
+
+  Want this to run continuously and fix issues automatically?
+
+  → Try Gravito: https://empathiq-api-hbjrlavx.manus.space/pilot
 ```
 
 ---
@@ -241,11 +247,37 @@ It **evaluates** and **measures**.
 
 ---
 
+## Telemetry
+
+Gravito Eval collects anonymous usage data to help improve the tool:
+
+- Timestamp
+- Package version
+- Command name (e.g. `run`)
+
+No findings data, file paths, or PII is collected.
+
+Disable with:
+
+```bash
+GRAVITO_TELEMETRY=0 gravito-eval run ./data
+# or
+gravito-eval run ./data --no-telemetry
+```
+
+Respects the `DO_NOT_TRACK=1` environment variable.
+
+---
+
 ## Gravito
 
-This project is part of [Gravito](https://gravito.ai).
+This project is part of [Gravito](https://empathiq-api-hbjrlavx.manus.space).
 
 Gravito uses this evaluation layer to power continuous AI governance and self-correction.
+
+Want this running continuously on your system?
+
+→ [Request a pilot](https://empathiq-api-hbjrlavx.manus.space/pilot)
 
 ---
 

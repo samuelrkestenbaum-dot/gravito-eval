@@ -42,6 +42,9 @@ export {
 // Confidence
 export { scoreConfidence, scoreFindings } from "./confidence";
 
+// Telemetry
+export { trackRun } from "./telemetry";
+
 // Types
 export type {
   Finding,
