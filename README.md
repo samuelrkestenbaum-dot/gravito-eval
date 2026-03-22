@@ -1,80 +1,208 @@
 # Gravito Eval
 
-Measure how closely your AI matches human judgment — and where it finds things humans missed.
-
-```bash
-npx gravito-eval run ./examples/basic
-```
+Scan any website in seconds. See what's wrong, what's missing, and what a human reviewer would miss.
 
 ```
-Gravito Eval Results
-
-Recall: 75%
-Precision: 50%
-F1: 60%
-
-Top-3 Agreement: 100%
-Novel Signal: 67% (validated)
-
-Interpretation:
-- Strong alignment with human judgment
-- AI found significant issues humans missed
+npx gravito-eval scan https://stripe.com
 ```
 
 ---
 
-## What this tells you
+## What You Get
 
-Your AI found 75% of what humans found (Recall).
-Half of what it flagged was relevant (Precision).
-And 67% of its unique findings were genuinely useful (Novel Signal).
+```
+  Gravito Eval Results
+  ──────────────────────────────────────────────────
 
-That means your AI is catching real issues humans miss — but also generating some noise.
+  Score:  72/100  C Grade
+  Site:   https://stripe.com
+
+  ████████████████████░░░░░░░░░░  72%
+
+  vs Fintech & Financial Services: top 34% (avg: 58)
+
+  Key Issues
+  ──────────────────────────────────────────────────
+
+  HIGH  Unsubstantiated Claim
+  → "Trusted by millions of businesses" — no source, no verification
+  Fix: Add a verifiable source or rephrase as a qualified statement
+
+  MEDIUM  Banned Vocabulary
+  → "cutting edge" — vague superlative
+  Fix: Replace with specific, measurable language
+
+  MEDIUM  Missing Disclaimers
+  → No disclaimers detected for financial service claims
+  Fix: Review content for missing disclaimers
+
+  Additional Insights Gravito Found
+  ──────────────────────────────────────────────────
+  ◆ Overclaiming
+  ◆ Missing Citations
+  ◆ Unapproved Claims
+
+  ──────────────────────────────────────────────────
+  Share: https://gravito.ai/try/report/a1b2c3d4
+
+  Analyzed in 8.2s · Gravito Engine · 10 issues found
+```
+
+Every scan produces a shareable link.
 
 ---
 
-## Install
+## Try It
 
 ```bash
-npm install gravito-eval
+npx gravito-eval scan https://stripe.com
+npx gravito-eval scan https://openai.com
+npx gravito-eval scan https://your-site.com
 ```
 
-Or run directly:
+No install. No API keys. No setup.
+
+---
+
+## Demo Mode
+
+See a walkthrough with explanations:
 
 ```bash
-npx gravito-eval run ./your-data.json
+npx gravito-eval demo
 ```
 
 ---
 
-## Input format
+## What This Does
+
+Gravito Eval analyzes a real website and shows:
+
+- How closely it matches human-quality governance judgment
+- Where the gaps are (unsubstantiated claims, missing disclaimers, banned vocabulary)
+- What improvements a human reviewer would miss
+
+It runs the same engine that powers [Gravito](https://gravito.ai) — a governance layer for AI outputs and digital surfaces.
+
+---
+
+## Why This Is Different
+
+Most tools tell you **what** is wrong.
+
+Gravito Eval tells you:
+
+- **How aligned** your content is with governance best practices
+- **Where it disagrees** with what a human reviewer would flag
+- **Whether those disagreements are valuable** — sometimes the AI catches things humans miss
+
+---
+
+## Use Cases
+
+| Use Case | What You Get |
+|---|---|
+| **Scan your landing page** | Governance score, issues, fixes, industry benchmark |
+| **Evaluate LLM outputs** | Alignment metrics, novel signal detection |
+| **Compare prompts** | Run the same content through different prompts, compare scores |
+| **QA AI features** | Check if your AI-generated content meets governance standards |
+| **Audit competitor pages** | See how your site compares to competitors in your industry |
+
+---
+
+## Local Evaluation Mode
+
+Already have findings from your own AI system? Compare them against a human baseline:
+
+```bash
+npx gravito-eval run ./my-findings.json
+```
+
+Input format:
 
 ```json
 {
   "aiFindings": [
-    { "id": "ai-1", "description": "Missing CTA", "category": "conversion", "severity": "high" }
+    {
+      "id": "ai-1",
+      "description": "Hero section uses unsubstantiated claim",
+      "category": "trust",
+      "severity": "high"
+    }
   ],
   "humanFindings": [
-    { "id": "h-1", "description": "No clear action", "category": "conversion", "severity": "high" }
+    {
+      "id": "human-1",
+      "description": "Misleading statistic in hero",
+      "category": "trust",
+      "severity": "high"
+    }
   ]
 }
 ```
 
-Save as `input.json` in a directory, then run:
+Output:
 
-```bash
-gravito-eval run ./my-directory
+```
+  Recall:     75%
+  Precision:  50%
+  F1:         60%
+  Top-3 Agreement: 100%
+  Novel Signal:    67% (validated)
+
+  ✓ Strong alignment with human judgment
+  ◆ AI found significant issues humans missed
+  Verdict: PASS
+```
+
+Add `--explain` for detailed match reasoning. Add `--json` for raw output.
+
+---
+
+## How It Works
+
+```
+URL → Fetch Content → Governance Analysis → Industry Benchmark → Score + Issues + Fixes
+                              ↓
+                    5 analysis frameworks:
+                    • Claim verification
+                    • Vocabulary compliance
+                    • Disclosure detection
+                    • Pattern recognition
+                    • Brand governance
+```
+
+The analysis runs server-side on the Gravito engine. No local LLM required.
+
+---
+
+## CLI Reference
+
+```
+gravito-eval scan <url>            Scan a live URL
+gravito-eval scan <url> --json     Output raw JSON
+gravito-eval demo                  See a demo with explanations
+gravito-eval run <path>            Evaluate local findings
+gravito-eval run <path> --explain  Show detailed match reasoning
+gravito-eval run <path> --json     Output raw JSON
+gravito-eval --help                Show help
+gravito-eval --version             Show version
 ```
 
 ---
 
-## Flags
+## Requirements
 
-```bash
-gravito-eval run <path> --explain     # Show why each match was made
-gravito-eval run <path> --json        # Raw JSON output
-gravito-eval run <path> --no-telemetry
-```
+- Node.js 18+
+- Internet connection (for `scan` command)
+
+---
+
+## Telemetry
+
+Anonymous usage data (timestamp, version, command name) is collected to improve the tool. No findings, file paths, or PII.
+
+Disable: `GRAVITO_TELEMETRY=0 gravito-eval run ./data` or set `DO_NOT_TRACK=1`.
 
 ---
 
@@ -94,43 +222,11 @@ result.verdict              // PASS | PARTIAL | FAIL | INSUFFICIENT_DATA
 
 ---
 
-## What this is for
+## Continuous Monitoring
 
-- Evaluating LLM outputs against human baselines
-- QA for AI agents (code review, content audit, compliance)
-- Measuring whether your AI is useful, not just accurate
+Want this running continuously on your site?
 
----
-
-## What this is NOT
-
-This does not generate outputs, fix issues, or run workflows.
-It **measures** and **evaluates**.
-
----
-
-## Telemetry
-
-Anonymous usage data (timestamp, version, command name) is collected to improve the tool.
-No findings, file paths, or PII.
-
-Disable:
-
-```bash
-GRAVITO_TELEMETRY=0 gravito-eval run ./data
-```
-
-Respects `DO_NOT_TRACK=1`.
-
----
-
-## Gravito
-
-This is the open-source evaluation layer behind [Gravito](https://gravito.ai) — continuous AI governance that scans, calibrates, and self-corrects.
-
-**Want this running continuously on your system?**
-
-[Request a pilot →](https://gravito.ai/pilot)
+[Gravito](https://gravito.ai) provides always-on governance monitoring, automated alerts, and team dashboards.
 
 ---
 

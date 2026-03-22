@@ -4,57 +4,555 @@
  * Gravito Eval CLI
  *
  * Usage:
- *   gravito-eval run <path>                    Run evaluation
- *   gravito-eval run <path> --explain          Show detailed match reasoning
- *   gravito-eval run <path> --json             Output raw JSON
- *   gravito-eval run <path> --no-telemetry     Disable anonymous usage tracking
- *   gravito-eval --help                        Show help
- *   gravito-eval --version                     Show version
+ *   gravito-eval scan <url>                     Scan a live URL
+ *   gravito-eval demo                           Run a preloaded demo
+ *   gravito-eval run <path>                     Evaluate local findings
+ *   gravito-eval run <path> --explain           Show detailed match reasoning
+ *   gravito-eval run <path> --json              Output raw JSON
+ *   gravito-eval run <path> --no-telemetry      Disable anonymous tracking
+ *   gravito-eval --help                         Show help
+ *   gravito-eval --version                      Show version
  */
 
 import * as fs from "fs";
 import * as path from "path";
+import * as https from "https";
+import * as http from "http";
 import { evaluate } from "../src/calibration";
 import { trackRun } from "../src/telemetry";
 import type { Finding, Adjudication, EvalResult } from "../src/types";
 
-// ─── Helpers ──────────────────────────────────────────────────────────────
+// ─── Constants ───────────────────────────────────────────────────────────
+
+const API_BASE = process.env.GRAVITO_API_URL || "https://empathiq-api-hbjrlavx.manus.space";
+const SHARE_BASE = "https://gravito.ai/try/report";
+
+// ─── Color Helpers ───────────────────────────────────────────────────────
+
+const isColorSupported = process.stdout.isTTY && !process.env.NO_COLOR;
+
+const c = {
+  bold: (s: string) => (isColorSupported ? `\x1b[1m${s}\x1b[0m` : s),
+  dim: (s: string) => (isColorSupported ? `\x1b[2m${s}\x1b[0m` : s),
+  green: (s: string) => (isColorSupported ? `\x1b[32m${s}\x1b[0m` : s),
+  red: (s: string) => (isColorSupported ? `\x1b[31m${s}\x1b[0m` : s),
+  yellow: (s: string) => (isColorSupported ? `\x1b[33m${s}\x1b[0m` : s),
+  cyan: (s: string) => (isColorSupported ? `\x1b[36m${s}\x1b[0m` : s),
+  magenta: (s: string) => (isColorSupported ? `\x1b[35m${s}\x1b[0m` : s),
+  gray: (s: string) => (isColorSupported ? `\x1b[90m${s}\x1b[0m` : s),
+  white: (s: string) => (isColorSupported ? `\x1b[37m${s}\x1b[0m` : s),
+  bgRed: (s: string) => (isColorSupported ? `\x1b[41m\x1b[37m${s}\x1b[0m` : s),
+  bgYellow: (s: string) =>
+    isColorSupported ? `\x1b[43m\x1b[30m${s}\x1b[0m` : s,
+  bgGreen: (s: string) =>
+    isColorSupported ? `\x1b[42m\x1b[30m${s}\x1b[0m` : s,
+  bgCyan: (s: string) =>
+    isColorSupported ? `\x1b[46m\x1b[30m${s}\x1b[0m` : s,
+};
+
+// ─── Spinner ─────────────────────────────────────────────────────────────
+
+class Spinner {
+  private interval: ReturnType<typeof setInterval> | null = null;
+
+  start(message: string): void {
+    process.stdout.write(`  ${message}`);
+    this.interval = setInterval(() => {
+      process.stdout.write(`.`);
+    }, 2000);
+  }
+
+  stop(message?: string): void {
+    if (this.interval) {
+      clearInterval(this.interval);
+      this.interval = null;
+    }
+    console.log();
+    if (message) {
+      console.log(message);
+    }
+  }
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────
 
 function pct(n: number): string {
   return `${Math.round(n * 100)}%`;
 }
 
-// ─── Output Formatting ────────────────────────────────────────────────────
+function severityBadge(severity: string): string {
+  switch (severity) {
+    case "critical":
+      return c.bgRed(" CRITICAL ");
+    case "high":
+      return c.red("HIGH");
+    case "medium":
+      return c.yellow("MEDIUM");
+    case "low":
+      return c.dim("LOW");
+    default:
+      return severity;
+  }
+}
+
+function scoreColor(score: number): (s: string) => string {
+  if (score >= 80) return c.green;
+  if (score >= 60) return c.yellow;
+  if (score >= 40) return c.yellow;
+  return c.red;
+}
+
+function gradeEmoji(grade: string): string {
+  switch (grade) {
+    case "A":
+      return "🟢";
+    case "B":
+      return "🟡";
+    case "C":
+      return "🟠";
+    case "D":
+      return "🔴";
+    case "F":
+      return "🔴";
+    default:
+      return "⚪";
+  }
+}
+
+function bar(value: number, width: number = 20): string {
+  const filled = Math.round((value / 100) * width);
+  const empty = width - filled;
+  const color = scoreColor(value);
+  return color("█".repeat(filled)) + c.dim("░".repeat(empty));
+}
+
+// ─── HTTP Client ─────────────────────────────────────────────────────────
+
+interface HttpResponse {
+  status: number;
+  body: string;
+}
+
+function httpPost(url: string, data: any): Promise<HttpResponse> {
+  return new Promise((resolve, reject) => {
+    const payload = JSON.stringify(data);
+    const parsed = new URL(url);
+    const lib = parsed.protocol === "https:" ? https : http;
+
+    const req = lib.request(
+      {
+        hostname: parsed.hostname,
+        port: parsed.port || (parsed.protocol === "https:" ? 443 : 80),
+        path: parsed.pathname + parsed.search,
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(payload),
+          "User-Agent": "gravito-eval-cli",
+        },
+        timeout: 120000, // 2 min — scans take time
+      },
+      (res) => {
+        let body = "";
+        res.on("data", (chunk: Buffer) => (body += chunk.toString()));
+        res.on("end", () =>
+          resolve({ status: res.statusCode || 0, body })
+        );
+      }
+    );
+
+    req.on("error", reject);
+    req.on("timeout", () => {
+      req.destroy();
+      reject(new Error("Request timed out (120s)"));
+    });
+
+    req.write(payload);
+    req.end();
+  });
+}
+
+// ─── Scan Command ────────────────────────────────────────────────────────
+
+interface ScanResult {
+  url: string;
+  pageTitle: string;
+  overallScore: number;
+  grade: string;
+  riskLevel: string;
+  summary: string;
+  issues: Array<{
+    category: string;
+    severity: string;
+    title: string;
+    description: string;
+    fix: string;
+    location: string;
+  }>;
+  projection: {
+    riskLevel: string;
+    summary: string;
+    potentialImpacts: string[];
+    timeToFix: string;
+  };
+  rewrittenExcerpt: string;
+  claimsDetected: number;
+  claimsVerified: number;
+  patternsDetected: string[];
+  analysisTimeMs: number;
+  engineUsed: string;
+  reportId: string;
+  benchmark: {
+    percentileRank: number;
+    industryCategory: string;
+    industryLabel: string;
+    industryAvg: number;
+    insight: string;
+  };
+}
+
+function printScanResult(result: ScanResult): void {
+  const sc = scoreColor(result.overallScore);
+
+  console.log();
+  console.log(
+    c.bold("  Gravito Eval Results")
+  );
+  console.log(c.dim("  " + "─".repeat(50)));
+  console.log();
+
+  // Score + Grade
+  console.log(
+    `  ${c.dim("Score:")}  ${sc(c.bold(String(result.overallScore)))}${c.dim("/100")}  ${gradeEmoji(result.grade)} ${c.bold(result.grade)} Grade`
+  );
+  console.log(`  ${c.dim("Site:")}   ${c.cyan(result.url)}`);
+  if (result.pageTitle) {
+    console.log(`  ${c.dim("Title:")}  ${result.pageTitle}`);
+  }
+  console.log();
+
+  // Score bar
+  console.log(`  ${bar(result.overallScore, 30)}  ${sc(String(result.overallScore) + "%")}`);
+  console.log();
+
+  // Benchmark
+  if (result.benchmark) {
+    const b = result.benchmark;
+    console.log(
+      `  ${c.dim("vs")} ${b.industryLabel}: ${c.bold("top " + (100 - b.percentileRank) + "%")} ${c.dim("(avg: " + b.industryAvg + ")")}`
+    );
+    console.log();
+  }
+
+  // Key Issues
+  if (result.issues.length > 0) {
+    console.log(c.bold("  Key Issues"));
+    console.log(c.dim("  " + "─".repeat(50)));
+    const topIssues = result.issues.slice(0, 6);
+    for (const issue of topIssues) {
+      console.log();
+      console.log(`  ${severityBadge(issue.severity)}  ${c.bold(issue.title)}`);
+      console.log(`  ${c.dim("→")} ${issue.description}`);
+      console.log(`  ${c.green("Fix:")} ${issue.fix}`);
+    }
+    if (result.issues.length > 6) {
+      console.log();
+      console.log(
+        c.dim(`  + ${result.issues.length - 6} more issues in full report`)
+      );
+    }
+    console.log();
+  }
+
+  // Novel Insights (patterns)
+  if (result.patternsDetected.length > 0) {
+    console.log(c.bold("  Additional Insights Gravito Found"));
+    console.log(c.dim("  " + "─".repeat(50)));
+    for (const pattern of result.patternsDetected) {
+      console.log(
+        `  ${c.magenta("◆")} ${pattern.replace(/_/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase())}`
+      );
+    }
+    console.log();
+  }
+
+  // Projection
+  if (result.projection) {
+    console.log(c.bold("  What This Means"));
+    console.log(c.dim("  " + "─".repeat(50)));
+    console.log(`  ${result.projection.summary}`);
+    console.log(`  ${c.dim("Time to fix:")} ${result.projection.timeToFix}`);
+    console.log();
+  }
+
+  // Shareable link
+  console.log(c.dim("  " + "─".repeat(50)));
+  console.log(
+    `  ${c.bold("Share:")} ${c.cyan(`${SHARE_BASE}/${result.reportId}`)}`
+  );
+  console.log();
+
+  // Next step — subtle, not salesy
+  console.log(c.dim("  Try another site:"));
+  console.log(c.dim("  npx gravito-eval scan https://your-site.com"));
+  console.log();
+
+  // Analysis meta
+  console.log(
+    c.dim(
+      `  Analyzed in ${(result.analysisTimeMs / 1000).toFixed(1)}s · ${result.engineUsed} · ${result.issues.length} issues found`
+    )
+  );
+  console.log();
+}
+
+async function runScan(url: string, jsonOutput: boolean): Promise<void> {
+  // Normalize URL
+  let targetUrl = url.trim();
+  if (!targetUrl.startsWith("http")) {
+    targetUrl = `https://${targetUrl}`;
+  }
+
+  // Validate URL
+  try {
+    new URL(targetUrl);
+  } catch {
+    console.error(`Invalid URL: ${url}`);
+    console.error(`Usage: gravito-eval scan https://example.com`);
+    process.exit(1);
+  }
+
+  const spinner = new Spinner();
+  spinner.start(`Scanning ${c.cyan(targetUrl)}`);
+
+  try {
+    const response = await httpPost(
+      `${API_BASE}/api/trpc/try.analyzeUrl`,
+      { json: { url: targetUrl } }
+    );
+
+    spinner.stop();
+
+    if (response.status !== 200) {
+      let errorMsg = "Analysis failed";
+      try {
+        const err = JSON.parse(response.body);
+        if (err?.error?.json?.message) errorMsg = err.error.json.message;
+        else if (err?.error?.message) errorMsg = err.error.message;
+      } catch {}
+      console.error(`Error: ${errorMsg}`);
+      console.error();
+      console.error(`This can happen if:`);
+      console.error(`  • The URL is not publicly accessible`);
+      console.error(`  • The site blocks automated requests`);
+      console.error(`  • The Gravito API is temporarily unavailable`);
+      console.error();
+      console.error(`Try: gravito-eval scan https://stripe.com`);
+      process.exit(1);
+    }
+
+    const parsed = JSON.parse(response.body);
+    const result: ScanResult = parsed.result?.data?.json || parsed.result?.data || parsed;
+
+    if (!result.overallScore && result.overallScore !== 0) {
+      console.error("Unexpected response format from Gravito API");
+      if (jsonOutput) {
+        console.log(JSON.stringify(parsed, null, 2));
+      }
+      process.exit(1);
+    }
+
+    if (jsonOutput) {
+      console.log(JSON.stringify(result, null, 2));
+    } else {
+      printScanResult(result);
+    }
+  } catch (err: any) {
+    spinner.stop();
+    console.error(`Error: ${err.message}`);
+    console.error();
+    console.error(`Check your internet connection and try again.`);
+    process.exit(1);
+  }
+}
+
+// ─── Demo Command ────────────────────────────────────────────────────────
+
+function runDemo(): void {
+  console.log();
+  console.log(c.bold("  Gravito Eval — Demo"));
+  console.log(c.dim("  " + "─".repeat(50)));
+  console.log();
+  console.log(
+    `  Gravito evaluates any website or AI output and tells you:`
+  );
+  console.log(
+    `  ${c.cyan("1.")} How closely it matches human-quality judgment`
+  );
+  console.log(`  ${c.cyan("2.")} Where the gaps are`);
+  console.log(
+    `  ${c.cyan("3.")} What improvements a human reviewer would miss`
+  );
+  console.log();
+  console.log(c.dim("  " + "─".repeat(50)));
+  console.log();
+  console.log(c.bold("  Example: Scanning a SaaS landing page"));
+  console.log();
+
+  // Simulated output
+  const demoResult: ScanResult = {
+    url: "https://example-saas.com",
+    pageTitle: "Example SaaS — Project Management for Teams",
+    overallScore: 64,
+    grade: "D",
+    riskLevel: "medium",
+    summary:
+      "This page has 4 high-priority issues that weaken trust and conversion. Fixing them would meaningfully improve both compliance posture and user confidence.",
+    issues: [
+      {
+        category: "unsubstantiated_claim",
+        severity: "high",
+        title: "Unsubstantiated Performance Claim",
+        description:
+          '"Trusted by 10,000+ teams" — no source, no verification, no link to evidence',
+        fix: "Add a source link or replace with verifiable metric",
+        location: "Hero section",
+      },
+      {
+        category: "missing_disclosure",
+        severity: "high",
+        title: "Missing AI Disclosure",
+        description:
+          'Uses "AI-powered" in headline but no transparency about how AI is used or what data it processes',
+        fix: "Add an AI transparency section or link to AI usage policy",
+        location: "Above the fold",
+      },
+      {
+        category: "content_safety",
+        severity: "medium",
+        title: "Absolute Language Without Qualification",
+        description:
+          '"The fastest project management tool" — superlative claim without comparative data',
+        fix: 'Qualify with "one of the fastest" or add benchmark data',
+        location: "Features section",
+      },
+      {
+        category: "trust_transparency",
+        severity: "medium",
+        title: "Cookie Consent Missing",
+        description:
+          "No cookie consent banner detected. Required under GDPR/ePrivacy for EU visitors.",
+        fix: "Implement a cookie consent mechanism before tracking scripts load",
+        location: "Global",
+      },
+      {
+        category: "brand_governance",
+        severity: "low",
+        title: "Inconsistent Messaging Tone",
+        description:
+          "Hero uses casual tone, pricing page uses formal/legal tone — creates cognitive dissonance",
+        fix: "Align tone across all pages to match brand voice guidelines",
+        location: "Multiple pages",
+      },
+    ],
+    projection: {
+      riskLevel: "medium",
+      summary:
+        "This page is functional but has 4 issues that weaken its effectiveness. Fixing them would meaningfully improve trust and conversion.",
+      potentialImpacts: [
+        "Customer trust erosion from unsubstantiated claims",
+        "Transparency gaps that erode user confidence",
+      ],
+      timeToFix: "30–60 minutes",
+    },
+    rewrittenExcerpt: "",
+    claimsDetected: 6,
+    claimsVerified: 2,
+    patternsDetected: [
+      "overclaiming",
+      "missing_disclaimers",
+      "unsubstantiated_claims",
+    ],
+    analysisTimeMs: 4200,
+    engineUsed: "Gravito Engine (Demo)",
+    reportId: "demo",
+    benchmark: {
+      percentileRank: 42,
+      industryCategory: "saas_marketing",
+      industryLabel: "SaaS Marketing Pages",
+      industryAvg: 62,
+      insight:
+        "This page falls below the median for SaaS marketing pages. Competitors with better governance scores are building more trust with the same audience.",
+    },
+  };
+
+  printScanResult(demoResult);
+
+  console.log(c.dim("  " + "═".repeat(50)));
+  console.log();
+  console.log(c.bold("  How it works"));
+  console.log();
+  console.log(
+    `  ${c.cyan("→")} Gravito fetches the page and extracts content`
+  );
+  console.log(
+    `  ${c.cyan("→")} Runs governance analysis across 5 frameworks`
+  );
+  console.log(
+    `  ${c.cyan("→")} Compares against industry benchmarks`
+  );
+  console.log(
+    `  ${c.cyan("→")} Identifies issues a human reviewer would flag`
+  );
+  console.log(
+    `  ${c.cyan("→")} Finds additional issues humans typically miss`
+  );
+  console.log();
+  console.log(c.dim("  " + "═".repeat(50)));
+  console.log();
+  console.log(c.bold("  Try it on a real site:"));
+  console.log();
+  console.log(`  ${c.cyan("npx gravito-eval scan https://stripe.com")}`);
+  console.log(`  ${c.cyan("npx gravito-eval scan https://openai.com")}`);
+  console.log(`  ${c.cyan("npx gravito-eval scan https://your-site.com")}`);
+  console.log();
+}
+
+// ─── Run Command (existing) ──────────────────────────────────────────────
 
 function printResult(result: EvalResult): void {
   const d = result.detection;
   const r = result.ranking;
 
   console.log();
-  console.log("Gravito Eval Results");
+  console.log(c.bold("  Gravito Eval Results"));
+  console.log(c.dim("  " + "─".repeat(50)));
   console.log();
 
-  console.log(`Recall: ${pct(d.recall)}`);
-  console.log(`Precision: ${pct(d.precision)}`);
-  console.log(`F1: ${pct(d.f1)}`);
+  console.log(`  ${c.dim("Recall:")}     ${scoreColor(d.recall * 100)(pct(d.recall))}`);
+  console.log(`  ${c.dim("Precision:")}  ${scoreColor(d.precision * 100)(pct(d.precision))}`);
+  console.log(`  ${c.dim("F1:")}         ${scoreColor(d.f1 * 100)(pct(d.f1))}`);
   console.log();
 
-  console.log(`Top-3 Agreement: ${pct(r.top3Overlap)}`);
+  console.log(`  ${c.dim("Top-3 Agreement:")} ${scoreColor(r.top3Overlap * 100)(pct(r.top3Overlap))}`);
 
   if (result.novelSignal) {
-    console.log(`Novel Signal: ${pct(result.novelSignal.validatedNovelRate)} (validated)`);
+    console.log(
+      `  ${c.dim("Novel Signal:")}    ${c.magenta(pct(result.novelSignal.validatedNovelRate))} ${c.dim("(validated)")}`
+    );
   }
 
   console.log();
 
-  console.log("Interpretation:");
+  console.log(c.bold("  Interpretation"));
+  console.log(c.dim("  " + "─".repeat(50)));
   printInterpretation(result);
   console.log();
 
-  console.log("Next Step:");
-  console.log("Want this running continuously and fixing issues automatically?");
-  console.log();
-  console.log("→ Try Gravito: https://gravito.ai/pilot");
+  // Subtle next step
+  console.log(c.dim("  " + "─".repeat(50)));
+  console.log(c.dim("  Try scanning a live site:"));
+  console.log(c.dim("  npx gravito-eval scan https://your-site.com"));
   console.log();
 }
 
@@ -62,62 +560,70 @@ function printInterpretation(result: EvalResult): void {
   const d = result.detection;
 
   if (d.recall >= 0.7) {
-    console.log("- Strong alignment with human judgment");
+    console.log(`  ${c.green("✓")} Strong alignment with human judgment`);
   } else if (d.recall >= 0.5) {
-    console.log("- Moderate alignment — some human findings missed");
+    console.log(`  ${c.yellow("~")} Moderate alignment — some human findings missed`);
   } else {
-    console.log("- Low alignment — many human findings missed");
+    console.log(`  ${c.red("✗")} Low alignment — many human findings missed`);
   }
 
   if (result.novelSignal) {
     const rate = result.novelSignal.validatedNovelRate;
     if (rate >= 0.4) {
-      console.log("- AI found significant issues humans missed");
+      console.log(`  ${c.magenta("◆")} AI found significant issues humans missed`);
     } else if (rate >= 0.2) {
-      console.log("- AI found some issues humans missed");
+      console.log(`  ${c.magenta("◆")} AI found some issues humans missed`);
     }
   }
+
+  // Verdict
+  const verdictMap: Record<string, string> = {
+    PASS: c.green("PASS"),
+    PARTIAL: c.yellow("PARTIAL"),
+    FAIL: c.red("FAIL"),
+    INSUFFICIENT_DATA: c.dim("INSUFFICIENT DATA"),
+  };
+  console.log(`  ${c.dim("Verdict:")} ${verdictMap[result.verdict] || result.verdict}`);
 }
 
-// ─── Explain Mode ─────────────────────────────────────────────────────────
+// ─── Explain Mode ────────────────────────────────────────────────────────
 
 function printExplain(result: EvalResult): void {
-  console.log("─── Detailed Reasoning ───");
+  console.log(c.bold("  Detailed Reasoning"));
+  console.log(c.dim("  " + "─".repeat(50)));
   console.log();
 
-  // Matched pairs
   if (result.matches.length > 0) {
-    console.log("Matched (AI ↔ Human):");
+    console.log(c.bold("  Matched (AI ↔ Human):"));
     for (const m of result.matches) {
       console.log();
-      console.log(`  AI:    "${m.aiIssue.description}"`);
-      console.log(`  Human: "${m.humanIssue.description}"`);
-      console.log(`  Why:   ${m.matchType} match (${Math.round(m.similarity * 100)}% similar)`);
+      console.log(`  ${c.cyan("AI:")}    "${m.aiIssue.description}"`);
+      console.log(`  ${c.green("Human:")} "${m.humanIssue.description}"`);
+      console.log(
+        `  ${c.dim("Why:")}   ${m.matchType} match (${Math.round(m.similarity * 100)}% similar)`
+      );
     }
     console.log();
   }
 
-  // Novel findings
   if (result.aiOnly.length > 0) {
-    console.log("Novel (AI found, humans didn't):");
+    console.log(c.bold("  Novel (AI found, humans didn't):"));
     for (const f of result.aiOnly) {
-      console.log(`  → "${f.description}"`);
-      console.log(`    Why novel: No similar human finding found`);
+      console.log(`  ${c.magenta("→")} "${f.description}"`);
     }
     console.log();
   }
 
-  // Missed findings
   if (result.humanOnly.length > 0) {
-    console.log("Missed (humans found, AI didn't):");
+    console.log(c.bold("  Missed (humans found, AI didn't):"));
     for (const f of result.humanOnly) {
-      console.log(`  ✗ "${f.description}"`);
+      console.log(`  ${c.red("✗")} "${f.description}"`);
     }
     console.log();
   }
 }
 
-// ─── Data Loading ─────────────────────────────────────────────────────────
+// ─── Data Loading ────────────────────────────────────────────────────────
 
 interface EvalData {
   aiFindings: Finding[];
@@ -204,29 +710,34 @@ function loadData(inputPath: string): EvalData {
   return validateData(raw);
 }
 
-// ─── Main ─────────────────────────────────────────────────────────────────
+// ─── Main ────────────────────────────────────────────────────────────────
 
 function showHelp(): void {
   console.log(`
-Gravito Eval — Measure AI-human alignment
+${c.bold("Gravito Eval")} — Evaluate any website or AI output in seconds
 
-Usage:
-  gravito-eval run <path>                    Evaluate findings
-  gravito-eval run <path> --explain          Show detailed match reasoning
-  gravito-eval run <path> --json             Output raw JSON
-  gravito-eval run <path> --no-telemetry     Disable anonymous tracking
+${c.bold("Usage:")}
+  gravito-eval scan <url>                     ${c.dim("Scan a live URL")}
+  gravito-eval demo                           ${c.dim("See a demo with explanations")}
+  gravito-eval run <path>                     ${c.dim("Evaluate local findings")}
 
-Input:
-  <path> can be a .json file or a directory containing input.json
+${c.bold("Scan flags:")}
+  --json                                      ${c.dim("Output raw JSON")}
 
-Examples:
-  gravito-eval run ./examples/basic
-  gravito-eval run ./my-audit.json
-  gravito-eval run ./examples/basic --explain
+${c.bold("Run flags:")}
+  --explain                                   ${c.dim("Show detailed match reasoning")}
+  --json                                      ${c.dim("Output raw JSON")}
+  --no-telemetry                              ${c.dim("Disable anonymous tracking")}
+
+${c.bold("Examples:")}
+  ${c.cyan("gravito-eval scan https://stripe.com")}        ${c.dim("Scan Stripe's homepage")}
+  ${c.cyan("gravito-eval scan https://your-site.com")}     ${c.dim("Scan your own site")}
+  ${c.cyan("gravito-eval demo")}                           ${c.dim("See what the output looks like")}
+  ${c.cyan("gravito-eval run ./examples/basic")}           ${c.dim("Evaluate local data")}
 `);
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const args = process.argv.slice(2);
 
   if (args.length === 0 || args.includes("--help") || args.includes("-h")) {
@@ -248,47 +759,79 @@ function main(): void {
     process.exit(0);
   }
 
-  if (args[0] !== "run") {
-    console.error(`Unknown command: ${args[0]}`);
-    console.error(`Run: gravito-eval --help`);
-    process.exit(1);
-  }
+  const command = args[0];
 
-  if (!args[1]) {
-    console.error(`Missing path.`);
-    console.error(`Usage: gravito-eval run <path>`);
-    process.exit(1);
-  }
-
-  const jsonOutput = args.includes("--json");
-  const explainMode = args.includes("--explain");
-
-  // Fire-and-forget telemetry (non-blocking)
-  trackRun("run");
-
-  try {
-    const data = loadData(args[1]);
-
-    const result = evaluate(data.aiFindings, data.humanFindings, {
-      adjudications: data.adjudications,
-      autoAdjudicate: !data.adjudications,
-    });
-
-    if (jsonOutput) {
-      console.log(JSON.stringify(result, null, 2));
-    } else {
-      printResult(result);
-      if (explainMode) {
-        printExplain(result);
-      }
+  // ── scan <url> ──
+  if (command === "scan") {
+    if (!args[1]) {
+      console.error(`Missing URL.`);
+      console.error(`Usage: gravito-eval scan https://example.com`);
+      process.exit(1);
     }
-  } catch (err: any) {
-    console.error(`Error: ${err.message}`);
-    process.exit(1);
+
+    trackRun("scan");
+
+    const jsonOutput = args.includes("--json");
+    await runScan(args[1], jsonOutput);
+
+    setTimeout(() => process.exit(0), 100);
+    return;
   }
 
-  // Force exit — telemetry HTTP should not keep process alive
-  setTimeout(() => process.exit(0), 100);
+  // ── demo ──
+  if (command === "demo") {
+    trackRun("demo");
+    runDemo();
+    setTimeout(() => process.exit(0), 100);
+    return;
+  }
+
+  // ── run <path> ──
+  if (command === "run") {
+    if (!args[1]) {
+      console.error(`Missing path.`);
+      console.error(`Usage: gravito-eval run <path>`);
+      process.exit(1);
+    }
+
+    const jsonOutput = args.includes("--json");
+    const explainMode = args.includes("--explain");
+
+    trackRun("run");
+
+    try {
+      const data = loadData(args[1]);
+
+      const result = evaluate(data.aiFindings, data.humanFindings, {
+        adjudications: data.adjudications,
+        autoAdjudicate: !data.adjudications,
+      });
+
+      if (jsonOutput) {
+        console.log(JSON.stringify(result, null, 2));
+      } else {
+        printResult(result);
+        if (explainMode) {
+          printExplain(result);
+        }
+      }
+    } catch (err: any) {
+      console.error(`Error: ${err.message}`);
+      process.exit(1);
+    }
+
+    setTimeout(() => process.exit(0), 100);
+    return;
+  }
+
+  // Unknown command
+  console.error(`Unknown command: ${command}`);
+  console.error();
+  console.error(`Run: gravito-eval --help`);
+  process.exit(1);
 }
 
-main();
+main().catch((err) => {
+  console.error(`Fatal: ${err.message}`);
+  process.exit(1);
+});
