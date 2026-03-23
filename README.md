@@ -13,10 +13,9 @@ npx gravito-eval scan https://stripe.com
 ```
   Scanning https://stripe.com
 
-  ◐ Fetching page content
-  ◑ Running governance analysis
-  ◒ Calculating score & benchmarks
-  ◉ Analysis complete
+  ◐ Fetching page content (2s)
+  ◑ Running content analysis (4s)
+  ◉ Analysis complete (32s)
 
   Gravito Eval Results
   ──────────────────────────────────────────────────
@@ -33,30 +32,63 @@ npx gravito-eval scan https://stripe.com
   ──────────────────────────────────────────────────
 
   HIGH  Unsubstantiated Claim
-  → Unsubstantiated Claims: "50% of"
+  → "50% of" — no source, no verification
   Fix: Add a verifiable source or rephrase as a qualified statement
 
   HIGH  Unsubstantiated Claim
-  → Unsubstantiated Claims: "100% of"
+  → "100% of" — percentage claim without citation
   Fix: Add a verifiable source or rephrase as a qualified statement
 
   MEDIUM  Banned Vocabulary
-  → Banned Vocabulary: "cutting edge"
+  → "cutting edge" — vague marketing language
   Fix: Replace with specific, measurable language
-
-  Additional Insights Gravito Found
-  ──────────────────────────────────────────────────
-  ◆ Unapproved Claims
-  ◆ Missing Disclaimers
-  ◆ Forbidden Language
 
   ──────────────────────────────────────────────────
   Share: https://gravito.ai/try/report/a1b2c3d4
 
-  Analyzed in 27.4s · Gravito Engine (Live) · 4 issues found
+  Analyzed in 32.0s · Gravito Engine (Live) · 4 issues found
 ```
 
 Every scan produces a shareable link.
+
+---
+
+## Compare Two Sites
+
+```bash
+npx gravito-eval compare stripe.com github.com
+```
+
+```
+  Gravito Eval — Comparison
+  ──────────────────────────────────────────────────
+
+  ✓ stripe.com: 57/100 🔴
+  ✓ github.com: 89/100 🟡
+
+  Head-to-Head
+  ══════════════════════════════════════════════════
+
+  stripe.com
+  █████████████████░░░░░░░░░░░░░  57/100 🔴 F
+
+  github.com
+  ██████████████████████████░░░░  89/100 🟡 B
+
+  Winner: github.com (+32 points over stripe.com)
+
+  Key Differences
+  ──────────────────────────────────────────────────
+
+  Only stripe.com has:
+    HIGH Unsubstantiated Claim
+    MEDIUM Banned Vocabulary
+
+  Both sites have:
+    ~ Missing Disclaimers
+```
+
+Compare your site to a competitor. See who's doing better and why.
 
 ---
 
@@ -86,11 +118,11 @@ npx gravito-eval demo
 
 Gravito Eval analyzes a real website and shows:
 
-- How closely it matches human-quality governance judgment
-- Where the gaps are (unsubstantiated claims, missing disclaimers, banned vocabulary)
-- What improvements a human reviewer would miss
+- What issues a content reviewer would flag
+- What additional problems most reviewers miss
+- How your site compares to others in your industry
 
-It runs the same engine that powers [Gravito](https://gravito.ai) — a governance layer for AI outputs and digital surfaces.
+It runs the same engine that powers [Gravito](https://gravito.ai).
 
 ---
 
@@ -100,7 +132,7 @@ Most tools tell you **what** is wrong.
 
 Gravito Eval tells you:
 
-- **How aligned** your content is with governance best practices
+- **How aligned** your content is with quality best practices
 - **Where it disagrees** with what a human reviewer would flag
 - **Whether those disagreements are valuable** — sometimes the AI catches things humans miss
 
@@ -110,11 +142,11 @@ Gravito Eval tells you:
 
 | Use Case | What You Get |
 |---|---|
-| **Scan your landing page** | Governance score, issues, fixes, industry benchmark |
+| **Scan your landing page** | Quality score, issues, fixes, industry benchmark |
+| **Compare to competitors** | Side-by-side analysis with `compare` command |
 | **Evaluate LLM outputs** | Alignment metrics, novel signal detection |
 | **Compare prompts** | Run the same content through different prompts, compare scores |
-| **QA AI features** | Check if your AI-generated content meets governance standards |
-| **Audit competitor pages** | See how your site compares to competitors in your industry |
+| **QA AI features** | Check if your AI-generated content meets quality standards |
 
 ---
 
@@ -170,14 +202,14 @@ Add `--explain` for detailed match reasoning. Add `--json` for raw output.
 ## How It Works
 
 ```
-URL → Fetch Content → Governance Analysis → Industry Benchmark → Score + Issues + Fixes
-                              ↓
-                    5 analysis frameworks:
-                    • Claim verification
-                    • Vocabulary compliance
-                    • Disclosure detection
-                    • Pattern recognition
-                    • Brand governance
+URL → Fetch Content → Content Analysis → Industry Benchmark → Score + Issues + Fixes
+                            ↓
+                  5 analysis frameworks:
+                  • Claim verification
+                  • Vocabulary compliance
+                  • Disclosure detection
+                  • Pattern recognition
+                  • Brand consistency
 ```
 
 The analysis runs server-side on the Gravito engine. No local LLM required.
@@ -187,14 +219,15 @@ The analysis runs server-side on the Gravito engine. No local LLM required.
 ## CLI Reference
 
 ```
-gravito-eval scan <url>            Scan a live URL
-gravito-eval scan <url> --json     Output raw JSON
-gravito-eval demo                  See a demo with explanations
-gravito-eval run <path>            Evaluate local findings
-gravito-eval run <path> --explain  Show detailed match reasoning
-gravito-eval run <path> --json     Output raw JSON
-gravito-eval --help                Show help
-gravito-eval --version             Show version
+gravito-eval scan <url>                     Scan a live URL
+gravito-eval compare <url1> <url2>          Compare two sites side-by-side
+gravito-eval scan <url> --json              Output raw JSON
+gravito-eval demo                           See a demo with explanations
+gravito-eval run <path>                     Evaluate local findings
+gravito-eval run <path> --explain           Show detailed match reasoning
+gravito-eval run <path> --json              Output raw JSON
+gravito-eval --help                         Show help
+gravito-eval --version                      Show version
 ```
 
 ---
@@ -202,7 +235,7 @@ gravito-eval --version             Show version
 ## Requirements
 
 - Node.js 18+
-- Internet connection (for `scan` command)
+- Internet connection (for `scan` and `compare` commands)
 
 ---
 
@@ -234,7 +267,7 @@ result.verdict              // PASS | PARTIAL | FAIL | INSUFFICIENT_DATA
 
 Want this running continuously on your site?
 
-[Gravito](https://gravito.ai) provides always-on governance monitoring, automated alerts, and team dashboards.
+[Gravito](https://gravito.ai) provides always-on monitoring, automated alerts, and team dashboards.
 
 ---
 

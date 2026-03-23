@@ -5,6 +5,7 @@
  *
  * Usage:
  *   gravito-eval scan <url>                     Scan a live URL
+ *   gravito-eval compare <url1> <url2>          Compare two sites side-by-side
  *   gravito-eval demo                           Run a preloaded demo
  *   gravito-eval run <path>                     Evaluate local findings
  *   gravito-eval run <path> --explain           Show detailed match reasoning
@@ -49,30 +50,6 @@ const c = {
   bgCyan: (s: string) =>
     isColorSupported ? `\x1b[46m\x1b[30m${s}\x1b[0m` : s,
 };
-
-// ─── Spinner ─────────────────────────────────────────────────────────────
-
-class Spinner {
-  private interval: ReturnType<typeof setInterval> | null = null;
-
-  start(message: string): void {
-    process.stdout.write(`  ${message}`);
-    this.interval = setInterval(() => {
-      process.stdout.write(`.`);
-    }, 2000);
-  }
-
-  stop(message?: string): void {
-    if (this.interval) {
-      clearInterval(this.interval);
-      this.interval = null;
-    }
-    console.log();
-    if (message) {
-      console.log(message);
-    }
-  }
-}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
@@ -124,6 +101,20 @@ function bar(value: number, width: number = 20): string {
   const empty = width - filled;
   const color = scoreColor(value);
   return color("█".repeat(filled)) + c.dim("░".repeat(empty));
+}
+
+function formatElapsed(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  return `${Math.floor(s / 60)}m ${s % 60}s`;
+}
+
+function shortDomain(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
 }
 
 // ─── HTTP Client ─────────────────────────────────────────────────────────
@@ -227,7 +218,7 @@ interface ScanResult {
   };
 }
 
-// Known brand names and design-intent terms that should NOT be flagged as capitalization errors
+// Known brand names and design-intent terms that should NOT be flagged
 const KNOWN_BRANDS = new Set([
   'URBN', 'NYSE', 'NASDAQ', 'AWS', 'GCP', 'IBM', 'SAP', 'HSBC', 'KPMG',
   'BMW', 'UBS', 'DHL', 'BBC', 'CNN', 'ESPN', 'HBO', 'NFL', 'NBA', 'FIFA',
@@ -268,24 +259,24 @@ function filterIssuesForDisplay(issues: ScanResult['issues']): ScanResult['issue
   });
 }
 
-function printScanResult(result: ScanResult): void {
+function printScanResult(result: ScanResult, compact: boolean = false): void {
   // Filter issues before display
   const displayIssues = filterIssuesForDisplay(result.issues);
   const sc = scoreColor(result.overallScore);
 
-  console.log();
-  console.log(
-    c.bold("  Gravito Eval Results")
-  );
-  console.log(c.dim("  " + "─".repeat(50)));
-  console.log();
+  if (!compact) {
+    console.log();
+    console.log(c.bold("  Gravito Eval Results"));
+    console.log(c.dim("  " + "─".repeat(50)));
+    console.log();
+  }
 
   // Score + Grade
   console.log(
     `  ${c.dim("Score:")}  ${sc(c.bold(String(result.overallScore)))}${c.dim("/100")}  ${gradeEmoji(result.grade)} ${c.bold(result.grade)} Grade`
   );
   console.log(`  ${c.dim("Site:")}   ${c.cyan(result.url)}`);
-  if (result.pageTitle) {
+  if (result.pageTitle && !compact) {
     console.log(`  ${c.dim("Title:")}  ${result.pageTitle}`);
   }
   console.log();
@@ -294,8 +285,8 @@ function printScanResult(result: ScanResult): void {
   console.log(`  ${bar(result.overallScore, 30)}  ${sc(String(result.overallScore) + "%")}`);
   console.log();
 
-  // Benchmark
-  if (result.benchmark) {
+  // Benchmark — no (est.) label, cleaner presentation
+  if (result.benchmark && !compact) {
     const b = result.benchmark;
     console.log(
       `  ${c.dim("vs")} ${b.industryLabel}: ${c.bold("top " + (100 - b.percentileRank) + "%")} ${c.dim("(avg: " + b.industryAvg + ")")}`
@@ -307,25 +298,28 @@ function printScanResult(result: ScanResult): void {
   if (displayIssues.length > 0) {
     console.log(c.bold("  Key Issues"));
     console.log(c.dim("  " + "─".repeat(50)));
-    const topIssues = displayIssues.slice(0, 6);
+    const maxIssues = compact ? 3 : 6;
+    const topIssues = displayIssues.slice(0, maxIssues);
     for (const issue of topIssues) {
       console.log();
       console.log(`  ${severityBadge(issue.severity)}  ${c.bold(issue.title)}`);
       console.log(`  ${c.dim("→")} ${issue.description}`);
-      console.log(`  ${c.green("Fix:")} ${issue.fix}`);
+      if (!compact) {
+        console.log(`  ${c.green("Fix:")} ${issue.fix}`);
+      }
     }
-    if (displayIssues.length > 6) {
+    if (displayIssues.length > maxIssues) {
       console.log();
       console.log(
-        c.dim(`  + ${displayIssues.length - 6} more issues in full report`)
+        c.dim(`  + ${displayIssues.length - maxIssues} more issues in full report`)
       );
     }
     console.log();
   }
 
-  // Novel Insights (patterns)
-  if (result.patternsDetected.length > 0) {
-    console.log(c.bold("  Additional Insights Gravito Found"));
+  // Novel Insights (patterns) — only in full mode
+  if (!compact && result.patternsDetected.length > 0) {
+    console.log(c.bold("  Additional Insights"));
     console.log(c.dim("  " + "─".repeat(50)));
     for (const pattern of result.patternsDetected) {
       console.log(
@@ -335,8 +329,8 @@ function printScanResult(result: ScanResult): void {
     console.log();
   }
 
-  // Projection
-  if (result.projection) {
+  // Projection — only in full mode
+  if (!compact && result.projection) {
     console.log(c.bold("  What This Means"));
     console.log(c.dim("  " + "─".repeat(50)));
     console.log(`  ${result.projection.summary}`);
@@ -344,28 +338,30 @@ function printScanResult(result: ScanResult): void {
     console.log();
   }
 
-  // Shareable link
-  console.log(c.dim("  " + "─".repeat(50)));
-  console.log(
-    `  ${c.bold("Share:")} ${c.cyan(`${SHARE_BASE}/${result.reportId}`)}`
-  );
-  console.log();
+  // Shareable link — only in full mode
+  if (!compact) {
+    console.log(c.dim("  " + "─".repeat(50)));
+    console.log(
+      `  ${c.bold("Share:")} ${c.cyan(`${SHARE_BASE}/${result.reportId}`)}`
+    );
+    console.log();
 
-  // Next step — subtle, not salesy
-  console.log(c.dim("  Try another site:"));
-  console.log(c.dim("  npx gravito-eval scan https://your-site.com"));
-  console.log();
+    // Next step — subtle, not salesy
+    console.log(c.dim("  Try another site:"));
+    console.log(c.dim("  npx gravito-eval scan https://your-site.com"));
+    console.log();
 
-  // Analysis meta
-  console.log(
-    c.dim(
-      `  Analyzed in ${(result.analysisTimeMs / 1000).toFixed(1)}s · ${result.engineUsed} · ${displayIssues.length} issues found`
-    )
-  );
-  console.log();
+    // Analysis meta
+    console.log(
+      c.dim(
+        `  Analyzed in ${(result.analysisTimeMs / 1000).toFixed(1)}s · ${result.engineUsed} · ${displayIssues.length} issues found`
+      )
+    );
+    console.log();
+  }
 }
 
-async function runScan(url: string, jsonOutput: boolean): Promise<void> {
+async function runScan(url: string, jsonOutput: boolean): Promise<ScanResult> {
   // Normalize URL
   let targetUrl = url.trim();
   if (!targetUrl.startsWith("http")) {
@@ -382,22 +378,13 @@ async function runScan(url: string, jsonOutput: boolean): Promise<void> {
   }
 
   // Try async scan first (startScan + poll), fall back to sync analyzeUrl
+  let result: ScanResult;
   try {
-    const result = await runAsyncScan(targetUrl);
-    if (jsonOutput) {
-      console.log(JSON.stringify(result, null, 2));
-    } else {
-      printScanResult(result);
-    }
+    result = await runAsyncScan(targetUrl);
   } catch (asyncErr: any) {
     // If async scan fails (e.g., endpoint not deployed yet), fall back to sync
     try {
-      const result = await runSyncScan(targetUrl);
-      if (jsonOutput) {
-        console.log(JSON.stringify(result, null, 2));
-      } else {
-        printScanResult(result);
-      }
+      result = await runSyncScan(targetUrl);
     } catch (syncErr: any) {
       console.error(`Error: ${syncErr.message || 'Analysis failed'}`);
       console.error();
@@ -410,9 +397,19 @@ async function runScan(url: string, jsonOutput: boolean): Promise<void> {
       process.exit(1);
     }
   }
+
+  if (jsonOutput) {
+    console.log(JSON.stringify(result, null, 2));
+  } else {
+    printScanResult(result);
+  }
+
+  return result;
 }
 
 async function runAsyncScan(targetUrl: string): Promise<ScanResult> {
+  const startTime = Date.now();
+
   // Step 1: Start the scan (returns immediately)
   console.log();
   console.log(`  ${c.dim("Scanning")} ${c.cyan(targetUrl)}`);
@@ -433,19 +430,22 @@ async function runAsyncScan(targetUrl: string): Promise<ScanResult> {
     throw new Error('No job ID returned');
   }
 
-  // Step 2: Poll for results with real progress
+  // Step 2: Poll for results with real progress and elapsed time
   const progressSteps = [
     { status: 'fetching', icon: '\u25d0', msg: 'Fetching page content' },
-    { status: 'analyzing', icon: '\u25d1', msg: 'Running governance analysis' },
-    { status: 'scoring', icon: '\u25d2', msg: 'Calculating score & benchmarks' },
+    { status: 'analyzing', icon: '\u25d1', msg: 'Running content analysis' },
+    { status: 'scoring', icon: '\u25d2', msg: 'Scoring against industry baseline' },
     { status: 'complete', icon: '\u25c9', msg: 'Analysis complete' },
   ];
 
   let lastStatus = '';
   const maxPolls = 60; // 2 minutes max
+  let lastProgressUpdate = Date.now();
 
   for (let i = 0; i < maxPolls; i++) {
     await sleep(2000);
+
+    const elapsed = formatElapsed(Date.now() - startTime);
 
     try {
       const pollResponse = await httpGet(
@@ -463,9 +463,14 @@ async function runAsyncScan(targetUrl: string): Promise<ScanResult> {
         const step = progressSteps.find(s => s.status === data.status);
         if (step) {
           const color = data.status === 'complete' ? c.green : c.cyan;
-          console.log(`  ${color(step.icon)} ${step.msg}`);
+          console.log(`  ${color(step.icon)} ${step.msg} ${c.dim(`(${elapsed})`)}`);
         }
         lastStatus = data.status;
+        lastProgressUpdate = Date.now();
+      } else if (Date.now() - lastProgressUpdate > 10000 && data.status !== 'complete') {
+        // Reassurance message every 10s if no status change
+        console.log(`  ${c.dim(`  Still working... (${elapsed})`)}`);
+        lastProgressUpdate = Date.now();
       }
 
       // Check for completion
@@ -498,34 +503,293 @@ async function runAsyncScan(targetUrl: string): Promise<ScanResult> {
 }
 
 async function runSyncScan(targetUrl: string): Promise<ScanResult> {
-  const spinner = new Spinner();
-  spinner.start(`Scanning ${c.cyan(targetUrl)}`);
+  console.log();
+  console.log(`  ${c.dim("Scanning")} ${c.cyan(targetUrl)}`);
+  
+  const startTime = Date.now();
+  const progressInterval = setInterval(() => {
+    const elapsed = formatElapsed(Date.now() - startTime);
+    process.stdout.write(c.dim(`.`));
+  }, 3000);
 
-  const response = await httpPost(
-    `${API_BASE}/api/trpc/try.analyzeUrl`,
-    { json: { url: targetUrl } }
+  try {
+    const response = await httpPost(
+      `${API_BASE}/api/trpc/try.analyzeUrl`,
+      { json: { url: targetUrl } }
+    );
+
+    clearInterval(progressInterval);
+    console.log();
+
+    if (response.status !== 200) {
+      let errorMsg = 'Analysis failed';
+      try {
+        const err = JSON.parse(response.body);
+        if (err?.error?.json?.message) errorMsg = err.error.json.message;
+        else if (err?.error?.message) errorMsg = err.error.message;
+      } catch {}
+      throw new Error(errorMsg);
+    }
+
+    const parsed = JSON.parse(response.body);
+    const result: ScanResult = parsed.result?.data?.json || parsed.result?.data || parsed;
+
+    if (!result.overallScore && result.overallScore !== 0) {
+      throw new Error('Unexpected response format');
+    }
+
+    return result;
+  } catch (err) {
+    clearInterval(progressInterval);
+    console.log();
+    throw err;
+  }
+}
+
+// ─── Compare Command ────────────────────────────────────────────────────
+
+async function runCompare(url1: string, url2: string, jsonOutput: boolean): Promise<void> {
+  // Normalize URLs
+  let targetUrl1 = url1.trim();
+  let targetUrl2 = url2.trim();
+  if (!targetUrl1.startsWith("http")) targetUrl1 = `https://${targetUrl1}`;
+  if (!targetUrl2.startsWith("http")) targetUrl2 = `https://${targetUrl2}`;
+
+  // Validate URLs
+  try {
+    new URL(targetUrl1);
+    new URL(targetUrl2);
+  } catch {
+    console.error(`Invalid URL(s).`);
+    console.error(`Usage: gravito-eval compare https://site1.com https://site2.com`);
+    process.exit(1);
+  }
+
+  console.log();
+  console.log(c.bold("  Gravito Eval — Comparison"));
+  console.log(c.dim("  " + "─".repeat(50)));
+  console.log();
+  console.log(`  Scanning ${c.cyan(shortDomain(targetUrl1))} and ${c.cyan(shortDomain(targetUrl2))}...`);
+  console.log();
+
+  // Run both scans
+  let result1: ScanResult;
+  let result2: ScanResult;
+
+  try {
+    // Run scans sequentially to avoid overwhelming the server
+    console.log(`  ${c.cyan("◐")} Analyzing ${c.bold(shortDomain(targetUrl1))}...`);
+    result1 = await runScanQuiet(targetUrl1);
+    console.log(`  ${c.green("✓")} ${shortDomain(targetUrl1)}: ${scoreColor(result1.overallScore)(String(result1.overallScore) + "/100")} ${gradeEmoji(result1.grade)}`);
+    console.log();
+
+    console.log(`  ${c.cyan("◐")} Analyzing ${c.bold(shortDomain(targetUrl2))}...`);
+    result2 = await runScanQuiet(targetUrl2);
+    console.log(`  ${c.green("✓")} ${shortDomain(targetUrl2)}: ${scoreColor(result2.overallScore)(String(result2.overallScore) + "/100")} ${gradeEmoji(result2.grade)}`);
+    console.log();
+  } catch (err: any) {
+    console.error(`\n  ${c.red("Error:")} ${err.message}`);
+    console.error(`  One or both sites could not be analyzed.`);
+    process.exit(1);
+  }
+
+  if (jsonOutput) {
+    console.log(JSON.stringify({
+      siteA: { url: result1.url, score: result1.overallScore, grade: result1.grade, issues: result1.issues },
+      siteB: { url: result2.url, score: result2.overallScore, grade: result2.grade, issues: result2.issues },
+      winner: result1.overallScore >= result2.overallScore ? shortDomain(targetUrl1) : shortDomain(targetUrl2),
+      scoreDiff: Math.abs(result1.overallScore - result2.overallScore),
+    }, null, 2));
+    return;
+  }
+
+  // Print comparison
+  printComparison(result1, result2);
+}
+
+async function runScanQuiet(url: string): Promise<ScanResult> {
+  // Try async first, fall back to sync
+  try {
+    return await runAsyncScanQuiet(url);
+  } catch {
+    return await runSyncScanQuiet(url);
+  }
+}
+
+async function runAsyncScanQuiet(url: string): Promise<ScanResult> {
+  const startResponse = await httpPost(
+    `${API_BASE}/api/trpc/try.startScan`,
+    { json: { url } }
   );
 
-  spinner.stop();
+  if (startResponse.status !== 200) {
+    throw new Error(`Failed to start scan`);
+  }
+
+  const startParsed = JSON.parse(startResponse.body);
+  const jobId = startParsed.result?.data?.json?.jobId;
+  if (!jobId) throw new Error('No job ID');
+
+  for (let i = 0; i < 60; i++) {
+    await sleep(2000);
+
+    try {
+      const pollResponse = await httpGet(
+        `${API_BASE}/api/trpc/try.getScanStatus?input=${encodeURIComponent(JSON.stringify({ json: { jobId } }))}`
+      );
+
+      if (pollResponse.status !== 200) continue;
+
+      const pollParsed = JSON.parse(pollResponse.body);
+      const data = pollParsed.result?.data?.json || pollParsed.result?.data;
+      if (!data) continue;
+
+      if (data.status === 'complete' && data.result) {
+        return data.result as ScanResult;
+      }
+
+      if (data.status === 'error') {
+        throw new Error(data.error || 'Analysis failed');
+      }
+    } catch (err: any) {
+      if (err.message && err.message !== 'Request timed out') throw err;
+    }
+  }
+
+  throw new Error('Scan timed out');
+}
+
+async function runSyncScanQuiet(url: string): Promise<ScanResult> {
+  const response = await httpPost(
+    `${API_BASE}/api/trpc/try.analyzeUrl`,
+    { json: { url } }
+  );
 
   if (response.status !== 200) {
-    let errorMsg = 'Analysis failed';
-    try {
-      const err = JSON.parse(response.body);
-      if (err?.error?.json?.message) errorMsg = err.error.json.message;
-      else if (err?.error?.message) errorMsg = err.error.message;
-    } catch {}
-    throw new Error(errorMsg);
+    throw new Error('Analysis failed');
   }
 
   const parsed = JSON.parse(response.body);
-  const result: ScanResult = parsed.result?.data?.json || parsed.result?.data || parsed;
+  return parsed.result?.data?.json || parsed.result?.data || parsed;
+}
 
-  if (!result.overallScore && result.overallScore !== 0) {
-    throw new Error('Unexpected response format');
+function printComparison(a: ScanResult, b: ScanResult): void {
+  const domainA = shortDomain(a.url);
+  const domainB = shortDomain(b.url);
+  const issuesA = filterIssuesForDisplay(a.issues);
+  const issuesB = filterIssuesForDisplay(b.issues);
+
+  console.log(c.bold("  Head-to-Head"));
+  console.log(c.dim("  " + "═".repeat(50)));
+  console.log();
+
+  // Side-by-side scores
+  const scA = scoreColor(a.overallScore);
+  const scB = scoreColor(b.overallScore);
+
+  console.log(`  ${c.bold(domainA)}`);
+  console.log(`  ${bar(a.overallScore, 25)}  ${scA(c.bold(String(a.overallScore)))}${c.dim("/100")} ${gradeEmoji(a.grade)} ${a.grade}`);
+  console.log();
+  console.log(`  ${c.bold(domainB)}`);
+  console.log(`  ${bar(b.overallScore, 25)}  ${scB(c.bold(String(b.overallScore)))}${c.dim("/100")} ${gradeEmoji(b.grade)} ${b.grade}`);
+  console.log();
+
+  // Score difference
+  const diff = Math.abs(a.overallScore - b.overallScore);
+  const winner = a.overallScore >= b.overallScore ? domainA : domainB;
+  const loser = a.overallScore >= b.overallScore ? domainB : domainA;
+
+  if (diff === 0) {
+    console.log(`  ${c.bold("Result:")} ${c.yellow("Tie")} — both sites scored equally`);
+  } else {
+    console.log(`  ${c.bold("Winner:")} ${c.green(winner)} ${c.dim(`(+${diff} points over ${loser})`)}`);
+  }
+  console.log();
+
+  // Key differences
+  console.log(c.bold("  Key Differences"));
+  console.log(c.dim("  " + "─".repeat(50)));
+  console.log();
+
+  // Compare issue categories
+  const categoriesA = new Set(issuesA.map(i => i.category));
+  const categoriesB = new Set(issuesB.map(i => i.category));
+
+  // Issues only in A
+  const onlyInA = issuesA.filter(i => !categoriesB.has(i.category));
+  // Issues only in B
+  const onlyInB = issuesB.filter(i => !categoriesA.has(i.category));
+  // Shared categories
+  const shared = issuesA.filter(i => categoriesB.has(i.category));
+
+  if (onlyInA.length > 0) {
+    console.log(`  ${c.red("Only")} ${c.bold(domainA)} ${c.red("has:")}`);
+    for (const issue of onlyInA.slice(0, 3)) {
+      console.log(`    ${severityBadge(issue.severity)} ${issue.title}`);
+    }
+    console.log();
   }
 
-  return result;
+  if (onlyInB.length > 0) {
+    console.log(`  ${c.red("Only")} ${c.bold(domainB)} ${c.red("has:")}`);
+    for (const issue of onlyInB.slice(0, 3)) {
+      console.log(`    ${severityBadge(issue.severity)} ${issue.title}`);
+    }
+    console.log();
+  }
+
+  if (shared.length > 0) {
+    console.log(`  ${c.yellow("Both sites have:")}`);
+    const sharedCategories = [...new Set(shared.map(i => i.title))].slice(0, 3);
+    for (const title of sharedCategories) {
+      console.log(`    ${c.yellow("~")} ${title}`);
+    }
+    console.log();
+  }
+
+  // High-severity comparison
+  const highA = issuesA.filter(i => i.severity === 'high' || i.severity === 'critical').length;
+  const highB = issuesB.filter(i => i.severity === 'high' || i.severity === 'critical').length;
+
+  console.log(c.bold("  Issue Summary"));
+  console.log(c.dim("  " + "─".repeat(50)));
+  console.log(`  ${c.bold(domainA)}: ${issuesA.length} issues (${highA} high-severity)`);
+  console.log(`  ${c.bold(domainB)}: ${issuesB.length} issues (${highB} high-severity)`);
+  console.log();
+
+  // Surprising gap
+  if (diff >= 15) {
+    const higherSite = a.overallScore >= b.overallScore ? a : b;
+    const lowerSite = a.overallScore >= b.overallScore ? b : a;
+    const higherDomain = a.overallScore >= b.overallScore ? domainA : domainB;
+    const lowerDomain = a.overallScore >= b.overallScore ? domainB : domainA;
+
+    console.log(c.bold("  Notable Gap"));
+    console.log(c.dim("  " + "─".repeat(50)));
+    console.log(`  ${higherDomain} scores ${diff} points higher than ${lowerDomain}.`);
+
+    // Find the biggest category difference
+    const lowerHighIssues = filterIssuesForDisplay(lowerSite.issues).filter(i => i.severity === 'high');
+    if (lowerHighIssues.length > 0) {
+      console.log(`  The biggest driver: ${lowerHighIssues[0].title.toLowerCase()}.`);
+    }
+    console.log();
+  }
+
+  // Share links
+  console.log(c.dim("  " + "─".repeat(50)));
+  if (a.reportId && a.reportId !== 'demo') {
+    console.log(`  ${c.dim("Share:")} ${c.cyan(`${SHARE_BASE}/${a.reportId}`)} ${c.dim(`(${domainA})`)}`);
+  }
+  if (b.reportId && b.reportId !== 'demo') {
+    console.log(`  ${c.dim("Share:")} ${c.cyan(`${SHARE_BASE}/${b.reportId}`)} ${c.dim(`(${domainB})`)}`);
+  }
+  console.log();
+
+  // Next step
+  console.log(c.dim("  Compare your site to a competitor:"));
+  console.log(c.dim("  npx gravito-eval compare https://your-site.com https://competitor.com"));
+  console.log();
 }
 
 // ─── Demo Command ────────────────────────────────────────────────────────
@@ -536,14 +800,14 @@ function runDemo(): void {
   console.log(c.dim("  " + "─".repeat(50)));
   console.log();
   console.log(
-    `  Gravito evaluates any website or AI output and tells you:`
+    `  Gravito scans any website and tells you:`
   );
   console.log(
-    `  ${c.cyan("1.")} How closely it matches human-quality judgment`
+    `  ${c.cyan("1.")} What issues a content reviewer would flag`
   );
-  console.log(`  ${c.cyan("2.")} Where the gaps are`);
+  console.log(`  ${c.cyan("2.")} What additional problems most reviewers miss`);
   console.log(
-    `  ${c.cyan("3.")} What improvements a human reviewer would miss`
+    `  ${c.cyan("3.")} How your site compares to others in your industry`
   );
   console.log();
   console.log(c.dim("  " + "─".repeat(50)));
@@ -559,7 +823,7 @@ function runDemo(): void {
     grade: "D",
     riskLevel: "medium",
     summary:
-      "This page has 4 high-priority issues that weaken trust and conversion. Fixing them would meaningfully improve both compliance posture and user confidence.",
+      "This page has 4 high-priority issues that weaken trust and conversion. Fixing them would meaningfully improve both quality and user confidence.",
     issues: [
       {
         category: "unsubstantiated_claim",
@@ -634,7 +898,7 @@ function runDemo(): void {
       industryLabel: "SaaS Marketing Pages",
       industryAvg: 62,
       insight:
-        "This page falls below the median for SaaS marketing pages. Competitors with better governance scores are building more trust with the same audience.",
+        "This page falls below the median for SaaS marketing pages. Competitors with better scores are building more trust with the same audience.",
     },
   };
 
@@ -648,7 +912,7 @@ function runDemo(): void {
     `  ${c.cyan("→")} Gravito fetches the page and extracts content`
   );
   console.log(
-    `  ${c.cyan("→")} Runs governance analysis across 5 frameworks`
+    `  ${c.cyan("→")} Runs analysis across 5 quality frameworks`
   );
   console.log(
     `  ${c.cyan("→")} Compares against industry benchmarks`
@@ -667,6 +931,10 @@ function runDemo(): void {
   console.log(`  ${c.cyan("npx gravito-eval scan https://stripe.com")}`);
   console.log(`  ${c.cyan("npx gravito-eval scan https://openai.com")}`);
   console.log(`  ${c.cyan("npx gravito-eval scan https://your-site.com")}`);
+  console.log();
+  console.log(c.bold("  Or compare two sites:"));
+  console.log();
+  console.log(`  ${c.cyan("npx gravito-eval compare https://your-site.com https://competitor.com")}`);
   console.log();
 }
 
@@ -866,10 +1134,11 @@ function loadData(inputPath: string): EvalData {
 
 function showHelp(): void {
   console.log(`
-${c.bold("Gravito Eval")} — Evaluate any website or AI output in seconds
+${c.bold("Gravito Eval")} — Scan any website for content quality issues
 
 ${c.bold("Usage:")}
   gravito-eval scan <url>                     ${c.dim("Scan a live URL")}
+  gravito-eval compare <url1> <url2>          ${c.dim("Compare two sites side-by-side")}
   gravito-eval demo                           ${c.dim("See a demo with explanations")}
   gravito-eval run <path>                     ${c.dim("Evaluate local findings")}
 
@@ -883,6 +1152,7 @@ ${c.bold("Run flags:")}
 
 ${c.bold("Examples:")}
   ${c.cyan("gravito-eval scan https://stripe.com")}        ${c.dim("Scan Stripe's homepage")}
+  ${c.cyan("gravito-eval compare stripe.com github.com")}  ${c.dim("Compare two sites")}
   ${c.cyan("gravito-eval scan https://your-site.com")}     ${c.dim("Scan your own site")}
   ${c.cyan("gravito-eval demo")}                           ${c.dim("See what the output looks like")}
   ${c.cyan("gravito-eval run ./examples/basic")}           ${c.dim("Evaluate local data")}
@@ -925,6 +1195,23 @@ async function main(): Promise<void> {
 
     const jsonOutput = args.includes("--json");
     await runScan(args[1], jsonOutput);
+
+    setTimeout(() => process.exit(0), 100);
+    return;
+  }
+
+  // ── compare <url1> <url2> ──
+  if (command === "compare") {
+    if (!args[1] || !args[2]) {
+      console.error(`Missing URL(s).`);
+      console.error(`Usage: gravito-eval compare https://site1.com https://site2.com`);
+      process.exit(1);
+    }
+
+    trackRun("compare");
+
+    const jsonOutput = args.includes("--json");
+    await runCompare(args[1], args[2], jsonOutput);
 
     setTimeout(() => process.exit(0), 100);
     return;
