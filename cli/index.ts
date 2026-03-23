@@ -211,7 +211,21 @@ interface ScanResult {
   };
 }
 
+function filterIssuesForDisplay(issues: ScanResult['issues']): ScanResult['issues'] {
+  return issues.filter(issue => {
+    // Filter out system/internal errors
+    if (issue.category === 'system' || issue.title === 'System') return false;
+    if (issue.description.toLowerCase().includes('sentinel checks could not')) return false;
+    if (issue.description.toLowerCase().includes('system error')) return false;
+    // Filter out generic "Pattern detected" filler issues
+    if (issue.description.startsWith('Pattern detected:')) return false;
+    return true;
+  });
+}
+
 function printScanResult(result: ScanResult): void {
+  // Filter issues before display
+  const displayIssues = filterIssuesForDisplay(result.issues);
   const sc = scoreColor(result.overallScore);
 
   console.log();
@@ -245,20 +259,20 @@ function printScanResult(result: ScanResult): void {
   }
 
   // Key Issues
-  if (result.issues.length > 0) {
+  if (displayIssues.length > 0) {
     console.log(c.bold("  Key Issues"));
     console.log(c.dim("  " + "─".repeat(50)));
-    const topIssues = result.issues.slice(0, 6);
+    const topIssues = displayIssues.slice(0, 6);
     for (const issue of topIssues) {
       console.log();
       console.log(`  ${severityBadge(issue.severity)}  ${c.bold(issue.title)}`);
       console.log(`  ${c.dim("→")} ${issue.description}`);
       console.log(`  ${c.green("Fix:")} ${issue.fix}`);
     }
-    if (result.issues.length > 6) {
+    if (displayIssues.length > 6) {
       console.log();
       console.log(
-        c.dim(`  + ${result.issues.length - 6} more issues in full report`)
+        c.dim(`  + ${displayIssues.length - 6} more issues in full report`)
       );
     }
     console.log();
@@ -300,7 +314,7 @@ function printScanResult(result: ScanResult): void {
   // Analysis meta
   console.log(
     c.dim(
-      `  Analyzed in ${(result.analysisTimeMs / 1000).toFixed(1)}s · ${result.engineUsed} · ${result.issues.length} issues found`
+      `  Analyzed in ${(result.analysisTimeMs / 1000).toFixed(1)}s · ${result.engineUsed} · ${displayIssues.length} issues found`
     )
   );
   console.log();
