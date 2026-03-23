@@ -1,0 +1,36 @@
+name: Gravito Eval — Content Quality Check
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  content-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Scan production site
+        run: npx gravito-eval scan https://your-site.com --json > gravito-report.json
+
+      - name: Check score threshold
+        run: |
+          SCORE=$(node -e "const r = require('./gravito-report.json'); console.log(r.overallScore || 0)")
+          echo "Score: $SCORE"
+          if [ "$SCORE" -lt 50 ]; then
+            echo "::error::Content quality score ($SCORE) is below threshold (50)"
+            exit 1
+          fi
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gravito-report
+          path: gravito-report.json

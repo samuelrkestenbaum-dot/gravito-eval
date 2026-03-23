@@ -232,6 +232,33 @@ gravito-eval --version                      Show version
 
 ---
 
+## CI/CD Integration
+
+Add content quality checks to your pipeline:
+
+```yaml
+# .github/workflows/gravito-eval.yml
+name: Content Quality Check
+on: [pull_request]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Scan site
+        run: npx gravito-eval scan https://your-site.com --json > report.json
+      - name: Check threshold
+        run: |
+          SCORE=$(node -e "const r = require('./report.json'); console.log(r.overallScore || 0)")
+          if [ "$SCORE" -lt 50 ]; then exit 1; fi
+```
+
+Fail PRs that drop your content quality below a threshold.
+
+---
+
 ## Requirements
 
 - Node.js 18+
