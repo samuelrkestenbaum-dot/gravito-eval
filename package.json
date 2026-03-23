@@ -1,7 +1,7 @@
 {
   "name": "gravito-eval",
-  "version": "0.2.1",
-  "description": "Scan any website in seconds — see what's wrong, what's missing, and what humans would miss.",
+  "version": "0.2.2",
+  "description": "Scan any website — see what's wrong, what's missing, and what a human reviewer would miss.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {

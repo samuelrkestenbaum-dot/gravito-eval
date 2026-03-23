@@ -1,6 +1,6 @@
 # Gravito Eval
 
-Scan any website in seconds. See what's wrong, what's missing, and what a human reviewer would miss.
+Scan any website. See what's wrong, what's missing, and what a human reviewer would miss.
 
 ```
 npx gravito-eval scan https://stripe.com
@@ -11,41 +11,49 @@ npx gravito-eval scan https://stripe.com
 ## What You Get
 
 ```
+  Scanning https://stripe.com
+
+  ◐ Fetching page content
+  ◑ Running governance analysis
+  ◒ Calculating score & benchmarks
+  ◉ Analysis complete
+
   Gravito Eval Results
   ──────────────────────────────────────────────────
 
-  Score:  72/100  C Grade
+  Score:  57/100  🔴 F Grade
   Site:   https://stripe.com
+  Title:  Stripe | Financial Infrastructure to Grow Your Revenue
 
-  ████████████████████░░░░░░░░░░  72%
+  █████████████████░░░░░░░░░░░░░  57%
 
-  vs Fintech & Financial Services: top 34% (avg: 58)
+  vs Fintech & Financial Services: top 52% (avg: 58)
 
   Key Issues
   ──────────────────────────────────────────────────
 
   HIGH  Unsubstantiated Claim
-  → "Trusted by millions of businesses" — no source, no verification
+  → Unsubstantiated Claims: "50% of"
+  Fix: Add a verifiable source or rephrase as a qualified statement
+
+  HIGH  Unsubstantiated Claim
+  → Unsubstantiated Claims: "100% of"
   Fix: Add a verifiable source or rephrase as a qualified statement
 
   MEDIUM  Banned Vocabulary
-  → "cutting edge" — vague superlative
+  → Banned Vocabulary: "cutting edge"
   Fix: Replace with specific, measurable language
-
-  MEDIUM  Missing Disclaimers
-  → No disclaimers detected for financial service claims
-  Fix: Review content for missing disclaimers
 
   Additional Insights Gravito Found
   ──────────────────────────────────────────────────
-  ◆ Overclaiming
-  ◆ Missing Citations
   ◆ Unapproved Claims
+  ◆ Missing Disclaimers
+  ◆ Forbidden Language
 
   ──────────────────────────────────────────────────
   Share: https://gravito.ai/try/report/a1b2c3d4
 
-  Analyzed in 8.2s · Gravito Engine · 10 issues found
+  Analyzed in 27.4s · Gravito Engine (Live) · 4 issues found
 ```
 
 Every scan produces a shareable link.

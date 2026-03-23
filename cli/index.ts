@@ -133,24 +133,28 @@ interface HttpResponse {
   body: string;
 }
 
-function httpPost(url: string, data: any): Promise<HttpResponse> {
+function httpRequest(method: string, url: string, data?: any): Promise<HttpResponse> {
   return new Promise((resolve, reject) => {
-    const payload = JSON.stringify(data);
+    const payload = data ? JSON.stringify(data) : undefined;
     const parsed = new URL(url);
     const lib = parsed.protocol === "https:" ? https : http;
+
+    const headers: Record<string, string> = {
+      "User-Agent": "gravito-eval-cli",
+    };
+    if (payload) {
+      headers["Content-Type"] = "application/json";
+      headers["Content-Length"] = String(Buffer.byteLength(payload));
+    }
 
     const req = lib.request(
       {
         hostname: parsed.hostname,
         port: parsed.port || (parsed.protocol === "https:" ? 443 : 80),
         path: parsed.pathname + parsed.search,
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Content-Length": Buffer.byteLength(payload),
-          "User-Agent": "gravito-eval-cli",
-        },
-        timeout: 120000, // 2 min — scans take time
+        method,
+        headers,
+        timeout: 15000,
       },
       (res) => {
         let body = "";
@@ -164,12 +168,24 @@ function httpPost(url: string, data: any): Promise<HttpResponse> {
     req.on("error", reject);
     req.on("timeout", () => {
       req.destroy();
-      reject(new Error("Request timed out (120s)"));
+      reject(new Error("Request timed out"));
     });
 
-    req.write(payload);
+    if (payload) req.write(payload);
     req.end();
   });
+}
+
+function httpPost(url: string, data: any): Promise<HttpResponse> {
+  return httpRequest("POST", url, data);
+}
+
+function httpGet(url: string): Promise<HttpResponse> {
+  return httpRequest("GET", url);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 // ─── Scan Command ────────────────────────────────────────────────────────
@@ -211,6 +227,33 @@ interface ScanResult {
   };
 }
 
+// Known brand names and design-intent terms that should NOT be flagged as capitalization errors
+const KNOWN_BRANDS = new Set([
+  'URBN', 'NYSE', 'NASDAQ', 'AWS', 'GCP', 'IBM', 'SAP', 'HSBC', 'KPMG',
+  'BMW', 'UBS', 'DHL', 'BBC', 'CNN', 'ESPN', 'HBO', 'NFL', 'NBA', 'FIFA',
+  'IKEA', 'LEGO', 'ZARA', 'ASOS', 'LVMH', 'VISA', 'AMEX',
+]);
+
+function isLikelyFalsePositive(issue: ScanResult['issues'][0]): boolean {
+  const desc = issue.description;
+  const loc = issue.location || '';
+
+  // Check if it's flagging a known brand name
+  for (const brand of KNOWN_BRANDS) {
+    if (desc.includes(brand)) return true;
+  }
+
+  // Check if it's flagging design-intent capitalization (headers, hero text)
+  if (issue.category === 'brand_violation' || issue.title.toLowerCase().includes('capitalization')) {
+    if (/header|hero|heading|banner|title|nav/i.test(loc)) return true;
+    // Single all-caps words in quotes are likely design headers
+    const quotedText = desc.match(/["']([A-Z]{2,})["']/);
+    if (quotedText) return true;
+  }
+
+  return false;
+}
+
 function filterIssuesForDisplay(issues: ScanResult['issues']): ScanResult['issues'] {
   return issues.filter(issue => {
     // Filter out system/internal errors
@@ -219,6 +262,8 @@ function filterIssuesForDisplay(issues: ScanResult['issues']): ScanResult['issue
     if (issue.description.toLowerCase().includes('system error')) return false;
     // Filter out generic "Pattern detected" filler issues
     if (issue.description.startsWith('Pattern detected:')) return false;
+    // Filter out likely false positives (brand names, design-intent caps)
+    if (isLikelyFalsePositive(issue)) return false;
     return true;
   });
 }
@@ -336,58 +381,151 @@ async function runScan(url: string, jsonOutput: boolean): Promise<void> {
     process.exit(1);
   }
 
-  const spinner = new Spinner();
-  spinner.start(`Scanning ${c.cyan(targetUrl)}`);
-
+  // Try async scan first (startScan + poll), fall back to sync analyzeUrl
   try {
-    const response = await httpPost(
-      `${API_BASE}/api/trpc/try.analyzeUrl`,
-      { json: { url: targetUrl } }
-    );
-
-    spinner.stop();
-
-    if (response.status !== 200) {
-      let errorMsg = "Analysis failed";
-      try {
-        const err = JSON.parse(response.body);
-        if (err?.error?.json?.message) errorMsg = err.error.json.message;
-        else if (err?.error?.message) errorMsg = err.error.message;
-      } catch {}
-      console.error(`Error: ${errorMsg}`);
-      console.error();
-      console.error(`This can happen if:`);
-      console.error(`  • The URL is not publicly accessible`);
-      console.error(`  • The site blocks automated requests`);
-      console.error(`  • The Gravito API is temporarily unavailable`);
-      console.error();
-      console.error(`Try: gravito-eval scan https://stripe.com`);
-      process.exit(1);
-    }
-
-    const parsed = JSON.parse(response.body);
-    const result: ScanResult = parsed.result?.data?.json || parsed.result?.data || parsed;
-
-    if (!result.overallScore && result.overallScore !== 0) {
-      console.error("Unexpected response format from Gravito API");
-      if (jsonOutput) {
-        console.log(JSON.stringify(parsed, null, 2));
-      }
-      process.exit(1);
-    }
-
+    const result = await runAsyncScan(targetUrl);
     if (jsonOutput) {
       console.log(JSON.stringify(result, null, 2));
     } else {
       printScanResult(result);
     }
-  } catch (err: any) {
-    spinner.stop();
-    console.error(`Error: ${err.message}`);
-    console.error();
-    console.error(`Check your internet connection and try again.`);
-    process.exit(1);
+  } catch (asyncErr: any) {
+    // If async scan fails (e.g., endpoint not deployed yet), fall back to sync
+    try {
+      const result = await runSyncScan(targetUrl);
+      if (jsonOutput) {
+        console.log(JSON.stringify(result, null, 2));
+      } else {
+        printScanResult(result);
+      }
+    } catch (syncErr: any) {
+      console.error(`Error: ${syncErr.message || 'Analysis failed'}`);
+      console.error();
+      console.error(`This can happen if:`);
+      console.error(`  ${c.dim("\u2022")} The URL is not publicly accessible`);
+      console.error(`  ${c.dim("\u2022")} The site blocks automated requests`);
+      console.error(`  ${c.dim("\u2022")} The Gravito API is temporarily unavailable`);
+      console.error();
+      console.error(`Try: gravito-eval scan https://stripe.com`);
+      process.exit(1);
+    }
   }
+}
+
+async function runAsyncScan(targetUrl: string): Promise<ScanResult> {
+  // Step 1: Start the scan (returns immediately)
+  console.log();
+  console.log(`  ${c.dim("Scanning")} ${c.cyan(targetUrl)}`);
+  console.log();
+
+  const startResponse = await httpPost(
+    `${API_BASE}/api/trpc/try.startScan`,
+    { json: { url: targetUrl } }
+  );
+
+  if (startResponse.status !== 200) {
+    throw new Error(`Failed to start scan (HTTP ${startResponse.status})`);
+  }
+
+  const startParsed = JSON.parse(startResponse.body);
+  const jobId = startParsed.result?.data?.json?.jobId;
+  if (!jobId) {
+    throw new Error('No job ID returned');
+  }
+
+  // Step 2: Poll for results with real progress
+  const progressSteps = [
+    { status: 'fetching', icon: '\u25d0', msg: 'Fetching page content' },
+    { status: 'analyzing', icon: '\u25d1', msg: 'Running governance analysis' },
+    { status: 'scoring', icon: '\u25d2', msg: 'Calculating score & benchmarks' },
+    { status: 'complete', icon: '\u25c9', msg: 'Analysis complete' },
+  ];
+
+  let lastStatus = '';
+  const maxPolls = 60; // 2 minutes max
+
+  for (let i = 0; i < maxPolls; i++) {
+    await sleep(2000);
+
+    try {
+      const pollResponse = await httpGet(
+        `${API_BASE}/api/trpc/try.getScanStatus?input=${encodeURIComponent(JSON.stringify({ json: { jobId } }))}`
+      );
+
+      if (pollResponse.status !== 200) continue;
+
+      const pollParsed = JSON.parse(pollResponse.body);
+      const data = pollParsed.result?.data?.json || pollParsed.result?.data;
+      if (!data) continue;
+
+      // Show progress update if status changed
+      if (data.status !== lastStatus) {
+        const step = progressSteps.find(s => s.status === data.status);
+        if (step) {
+          const color = data.status === 'complete' ? c.green : c.cyan;
+          console.log(`  ${color(step.icon)} ${step.msg}`);
+        }
+        lastStatus = data.status;
+      }
+
+      // Check for completion
+      if (data.status === 'complete' && data.result) {
+        console.log();
+        return data.result as ScanResult;
+      }
+
+      // Check for error
+      if (data.status === 'error') {
+        const errorMsg = data.error || 'Analysis failed';
+        if (errorMsg.includes('Could not fetch')) {
+          throw new Error(`Could not reach ${targetUrl}. The site may block automated requests or require authentication.`);
+        }
+        if (errorMsg.includes('timeout') || errorMsg.includes('timed out')) {
+          throw new Error(`The site took too long to respond. Try a simpler page or check if the URL is correct.`);
+        }
+        throw new Error(errorMsg);
+      }
+    } catch (pollErr: any) {
+      // If it's our own thrown error, re-throw
+      if (pollErr.message && !pollErr.message.includes('timed out') && pollErr.message !== 'Request timed out') {
+        throw pollErr;
+      }
+      // Otherwise transient network issue, keep polling
+    }
+  }
+
+  throw new Error('Scan timed out after 2 minutes.');
+}
+
+async function runSyncScan(targetUrl: string): Promise<ScanResult> {
+  const spinner = new Spinner();
+  spinner.start(`Scanning ${c.cyan(targetUrl)}`);
+
+  const response = await httpPost(
+    `${API_BASE}/api/trpc/try.analyzeUrl`,
+    { json: { url: targetUrl } }
+  );
+
+  spinner.stop();
+
+  if (response.status !== 200) {
+    let errorMsg = 'Analysis failed';
+    try {
+      const err = JSON.parse(response.body);
+      if (err?.error?.json?.message) errorMsg = err.error.json.message;
+      else if (err?.error?.message) errorMsg = err.error.message;
+    } catch {}
+    throw new Error(errorMsg);
+  }
+
+  const parsed = JSON.parse(response.body);
+  const result: ScanResult = parsed.result?.data?.json || parsed.result?.data || parsed;
+
+  if (!result.overallScore && result.overallScore !== 0) {
+    throw new Error('Unexpected response format');
+  }
+
+  return result;
 }
 
 // ─── Demo Command ────────────────────────────────────────────────────────
