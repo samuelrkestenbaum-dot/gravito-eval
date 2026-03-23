@@ -116,13 +116,13 @@ npx gravito-eval demo
 
 ## What This Does
 
-Gravito Eval analyzes a real website and shows:
+Point it at any URL. It scans the page and tells you:
 
-- What issues a content reviewer would flag
-- What additional problems most reviewers miss
-- How your site compares to others in your industry
+- What a content reviewer would flag
+- What most reviewers would miss
+- How your site stacks up against others in your industry
 
-It runs the same engine that powers [Gravito](https://gravito.ai).
+Same engine that powers [Gravito](https://gravito.ai).
 
 ---
 
@@ -130,11 +130,11 @@ It runs the same engine that powers [Gravito](https://gravito.ai).
 
 Most tools tell you **what** is wrong.
 
-Gravito Eval tells you:
+Gravito Eval also tells you:
 
-- **How aligned** your content is with quality best practices
-- **Where it disagrees** with what a human reviewer would flag
-- **Whether those disagreements are valuable** — sometimes the AI catches things humans miss
+- **How your site compares** to others in your industry
+- **What a human reviewer would catch** — and what they'd miss
+- **Whether the AI's extra findings are useful** — sometimes it catches things humans don't
 
 ---
 
@@ -202,17 +202,17 @@ Add `--explain` for detailed match reasoning. Add `--json` for raw output.
 ## How It Works
 
 ```
-URL → Fetch Content → Content Analysis → Industry Benchmark → Score + Issues + Fixes
-                            ↓
-                  5 analysis frameworks:
-                  • Claim verification
-                  • Vocabulary compliance
-                  • Disclosure detection
-                  • Pattern recognition
-                  • Brand consistency
+Your URL → Fetch page → Analyze content → Compare to industry → Score + Issues + Fixes
 ```
 
-The analysis runs server-side on the Gravito engine. No local LLM required.
+Gravito checks your site for:
+- Unverified claims ("trusted by 10,000+ teams" with no source)
+- Vague marketing language ("cutting edge", "best in class")
+- Missing disclosures (AI usage, cookies, data handling)
+- Inconsistent messaging across sections
+- Issues that human reviewers typically miss
+
+The analysis runs server-side. No local LLM required.
 
 ---
 
@@ -294,7 +294,7 @@ result.verdict              // PASS | PARTIAL | FAIL | INSUFFICIENT_DATA
 
 Want this running continuously on your site?
 
-[Gravito](https://gravito.ai) provides always-on monitoring, automated alerts, and team dashboards.
+[Gravito](https://gravito.ai) monitors your site automatically and alerts you when new issues appear.
 
 ---
 

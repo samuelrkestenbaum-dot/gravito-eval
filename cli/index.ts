@@ -124,7 +124,7 @@ interface HttpResponse {
   body: string;
 }
 
-function httpRequest(method: string, url: string, data?: any): Promise<HttpResponse> {
+function httpRequest(method: string, url: string, data?: any, timeoutMs: number = 60000): Promise<HttpResponse> {
   return new Promise((resolve, reject) => {
     const payload = data ? JSON.stringify(data) : undefined;
     const parsed = new URL(url);
@@ -145,7 +145,7 @@ function httpRequest(method: string, url: string, data?: any): Promise<HttpRespo
         path: parsed.pathname + parsed.search,
         method,
         headers,
-        timeout: 15000,
+        timeout: timeoutMs,
       },
       (res) => {
         let body = "";
@@ -167,12 +167,12 @@ function httpRequest(method: string, url: string, data?: any): Promise<HttpRespo
   });
 }
 
-function httpPost(url: string, data: any): Promise<HttpResponse> {
-  return httpRequest("POST", url, data);
+function httpPost(url: string, data: any, timeoutMs?: number): Promise<HttpResponse> {
+  return httpRequest("POST", url, data, timeoutMs);
 }
 
-function httpGet(url: string): Promise<HttpResponse> {
-  return httpRequest("GET", url);
+function httpGet(url: string, timeoutMs?: number): Promise<HttpResponse> {
+  return httpRequest("GET", url, undefined, timeoutMs);
 }
 
 function sleep(ms: number): Promise<void> {
@@ -361,6 +361,199 @@ function printScanResult(result: ScanResult, compact: boolean = false): void {
   }
 }
 
+// ─── Local URL Fetcher ──────────────────────────────────────────────────
+
+interface FetchedPage {
+  content: string;
+  pageTitle: string;
+}
+
+function fetchPageContent(url: string): Promise<FetchedPage> {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(url);
+    const lib = parsed.protocol === "https:" ? https : http;
+
+    const req = lib.request(
+      {
+        hostname: parsed.hostname,
+        port: parsed.port || (parsed.protocol === "https:" ? 443 : 80),
+        path: parsed.pathname + parsed.search,
+        method: "GET",
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "Accept-Language": "en-US,en;q=0.5",
+        },
+        timeout: 20000,
+      },
+      (res) => {
+        // Follow redirects
+        if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          fetchPageContent(new URL(res.headers.location, url).toString())
+            .then(resolve)
+            .catch(reject);
+          return;
+        }
+
+        if (res.statusCode && res.statusCode >= 400) {
+          reject(new Error(`HTTP ${res.statusCode}`));
+          return;
+        }
+
+        let body = "";
+        res.on("data", (chunk: Buffer) => (body += chunk.toString()));
+        res.on("end", () => {
+          // Extract title
+          const titleMatch = body.match(/<title[^>]*>(.*?)<\/title>/i);
+          const pageTitle = titleMatch ? titleMatch[1].trim() : url;
+
+          // Strip HTML to text
+          const content = body
+            .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+            .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+            .replace(/<[^>]+>/g, " ")
+            .replace(/&nbsp;/g, " ")
+            .replace(/&amp;/g, "&")
+            .replace(/&lt;/g, "<")
+            .replace(/&gt;/g, ">")
+            .replace(/&quot;/g, '"')
+            .replace(/&#39;/g, "'")
+            .replace(/\s+/g, " ")
+            .trim()
+            .slice(0, 15000);
+
+          if (content.length < 50) {
+            reject(new Error("Page content too short"));
+            return;
+          }
+
+          resolve({ content, pageTitle });
+        });
+      }
+    );
+
+    req.on("error", reject);
+    req.on("timeout", () => {
+      req.destroy();
+      reject(new Error("Request timed out"));
+    });
+    req.end();
+  });
+}
+
+async function runPrefetchedScan(targetUrl: string): Promise<ScanResult> {
+  const startTime = Date.now();
+
+  console.log();
+  console.log(`  ${c.dim("Scanning")} ${c.cyan(targetUrl)}`);
+  console.log();
+
+  // Step 1: Fetch locally
+  console.log(`  ${c.cyan("\u25d0")} Fetching page content ${c.dim("(local)")}`);
+  const page = await fetchPageContent(targetUrl);
+  const fetchElapsed = formatElapsed(Date.now() - startTime);
+  console.log(`  ${c.green("\u25d1")} Page fetched ${c.dim(`(${fetchElapsed})`)}`);
+
+  // Step 2: Send to server for analysis (async — returns jobId)
+  console.log(`  ${c.cyan("\u25d1")} Running content analysis`);
+
+  const response = await httpPost(
+    `${API_BASE}/api/trpc/try.analyzePrefetched`,
+    { json: { url: targetUrl, content: page.content.slice(0, 8000), pageTitle: page.pageTitle } }
+  );
+
+  if (response.status !== 200) {
+    let errorMsg = "Analysis failed";
+    try {
+      const err = JSON.parse(response.body);
+      if (err?.error?.json?.message) errorMsg = err.error.json.message;
+      else if (err?.error?.message) errorMsg = err.error.message;
+    } catch {}
+    throw new Error(errorMsg);
+  }
+
+  const startParsed = JSON.parse(response.body);
+  const jobId = startParsed.result?.data?.json?.jobId;
+  if (!jobId) {
+    // Fallback: maybe server returned result directly (old sync endpoint)
+    const directResult: ScanResult = startParsed.result?.data?.json || startParsed.result?.data || startParsed;
+    if (directResult.overallScore || directResult.overallScore === 0) {
+      const totalElapsed = formatElapsed(Date.now() - startTime);
+      console.log(`  ${c.green("\u25c9")} Analysis complete ${c.dim(`(${totalElapsed})`)}`);
+      console.log();
+      return directResult;
+    }
+    throw new Error("Unexpected response format");
+  }
+
+  // Step 3: Poll for results
+  for (let i = 0; i < 60; i++) {
+    await sleep(2000);
+    try {
+      const pollResponse = await httpGet(
+        `${API_BASE}/api/trpc/try.getScanStatus?input=${encodeURIComponent(JSON.stringify({ json: { jobId } }))}`
+      );
+      if (pollResponse.status !== 200) continue;
+      const pollParsed = JSON.parse(pollResponse.body);
+      const data = pollParsed.result?.data?.json || pollParsed.result?.data;
+      if (!data) continue;
+      if (data.status === 'complete' && data.result) {
+        const totalElapsed = formatElapsed(Date.now() - startTime);
+        console.log(`  ${c.green("\u25c9")} Analysis complete ${c.dim(`(${totalElapsed})`)}`);
+        console.log();
+        return data.result as ScanResult;
+      }
+      if (data.status === 'error') {
+        throw new Error(data.error || 'Analysis failed');
+      }
+    } catch (err: any) {
+      if (err.message && err.message !== 'Request timed out') throw err;
+    }
+  }
+  throw new Error('Scan timed out');
+}
+
+async function runPrefetchedScanQuiet(url: string): Promise<ScanResult> {
+  const page = await fetchPageContent(url);
+
+  const response = await httpPost(
+    `${API_BASE}/api/trpc/try.analyzePrefetched`,
+    { json: { url, content: page.content.slice(0, 8000), pageTitle: page.pageTitle } }
+  );
+
+  if (response.status !== 200) {
+    throw new Error("Analysis failed");
+  }
+
+  const startParsed = JSON.parse(response.body);
+  const jobId = startParsed.result?.data?.json?.jobId;
+  if (!jobId) {
+    // Fallback: maybe server returned result directly (old sync endpoint)
+    const directResult: ScanResult = startParsed.result?.data?.json || startParsed.result?.data || startParsed;
+    if (directResult.overallScore || directResult.overallScore === 0) return directResult;
+    throw new Error("Unexpected response format");
+  }
+
+  // Poll for results
+  for (let i = 0; i < 60; i++) {
+    await sleep(2000);
+    try {
+      const pollResponse = await httpGet(
+        `${API_BASE}/api/trpc/try.getScanStatus?input=${encodeURIComponent(JSON.stringify({ json: { jobId } }))}`
+      );
+      if (pollResponse.status !== 200) continue;
+      const pollParsed = JSON.parse(pollResponse.body);
+      const data = pollParsed.result?.data?.json || pollParsed.result?.data;
+      if (!data) continue;
+      if (data.status === 'complete' && data.result) return data.result as ScanResult;
+      if (data.status === 'error') throw new Error(data.error || 'Analysis failed');
+    } catch (err: any) {
+      if (err.message && err.message !== 'Request timed out') throw err;
+    }
+  }
+  throw new Error('Scan timed out');
+}
+
 async function runScan(url: string, jsonOutput: boolean): Promise<ScanResult> {
   // Normalize URL
   let targetUrl = url.trim();
@@ -377,24 +570,30 @@ async function runScan(url: string, jsonOutput: boolean): Promise<ScanResult> {
     process.exit(1);
   }
 
-  // Try async scan first (startScan + poll), fall back to sync analyzeUrl
+  // Try prefetched scan first (CLI fetches URL, server only does LLM analysis)
+  // Falls back to async scan, then sync scan
   let result: ScanResult;
   try {
-    result = await runAsyncScan(targetUrl);
-  } catch (asyncErr: any) {
-    // If async scan fails (e.g., endpoint not deployed yet), fall back to sync
+    result = await runPrefetchedScan(targetUrl);
+  } catch (prefetchErr: any) {
+    // If prefetched scan fails, try async scan (server fetches URL)
     try {
-      result = await runSyncScan(targetUrl);
-    } catch (syncErr: any) {
-      console.error(`Error: ${syncErr.message || 'Analysis failed'}`);
-      console.error();
-      console.error(`This can happen if:`);
-      console.error(`  ${c.dim("\u2022")} The URL is not publicly accessible`);
-      console.error(`  ${c.dim("\u2022")} The site blocks automated requests`);
-      console.error(`  ${c.dim("\u2022")} The Gravito API is temporarily unavailable`);
-      console.error();
-      console.error(`Try: gravito-eval scan https://stripe.com`);
-      process.exit(1);
+      result = await runAsyncScan(targetUrl);
+    } catch (asyncErr: any) {
+      // Last resort: sync scan
+      try {
+        result = await runSyncScan(targetUrl);
+      } catch (syncErr: any) {
+        console.error(`Error: ${syncErr.message || 'Analysis failed'}`);
+        console.error();
+        console.error(`This can happen if:`);
+        console.error(`  ${c.dim("\u2022")} The URL is not publicly accessible`);
+        console.error(`  ${c.dim("\u2022")} The site blocks automated requests`);
+        console.error(`  ${c.dim("\u2022")} The Gravito API is temporarily unavailable`);
+        console.error();
+        console.error(`Try: gravito-eval scan https://stripe.com`);
+        process.exit(1);
+      }
     }
   }
 
@@ -608,11 +807,15 @@ async function runCompare(url1: string, url2: string, jsonOutput: boolean): Prom
 }
 
 async function runScanQuiet(url: string): Promise<ScanResult> {
-  // Try async first, fall back to sync
+  // Try prefetched first, then async, then sync
   try {
-    return await runAsyncScanQuiet(url);
+    return await runPrefetchedScanQuiet(url);
   } catch {
-    return await runSyncScanQuiet(url);
+    try {
+      return await runAsyncScanQuiet(url);
+    } catch {
+      return await runSyncScanQuiet(url);
+    }
   }
 }
 
@@ -862,7 +1065,7 @@ function runDemo(): void {
         location: "Global",
       },
       {
-        category: "brand_governance",
+        category: "brand_consistency",
         severity: "low",
         title: "Inconsistent Messaging Tone",
         description:
