@@ -345,12 +345,6 @@ function printScanResult(result: ScanResult, compact: boolean = false): void {
       `  ${c.bold("Share:")} ${c.cyan(`${SHARE_BASE}/${result.reportId}`)}`
     );
 
-    // Fix CTA — only show when there are issues
-    if (result.issues && result.issues.length > 0) {
-      console.log(
-        `  ${c.bold("Fix:")}   ${c.yellow(`https://gravito.ai/fix/${result.reportId}`)} ${c.dim(`— $49, AI-rewritten copy`)}`
-      );
-    }
     console.log();
 
     // Next step — subtle, not salesy
@@ -995,14 +989,6 @@ function printComparison(a: ScanResult, b: ScanResult): void {
     console.log(`  ${c.dim("Share:")} ${c.cyan(`${SHARE_BASE}/${b.reportId}`)} ${c.dim(`(${domainB})`)}`);
   }
 
-  // Fix CTA for the lower-scoring site
-  const loserResult = a.overallScore <= b.overallScore ? a : b;
-  const loserDomainName = a.overallScore <= b.overallScore ? domainA : domainB;
-  if (loserResult.reportId && loserResult.reportId !== 'demo' && loserResult.issues && loserResult.issues.length > 0) {
-    console.log(
-      `  ${c.bold("Fix:")}   ${c.yellow(`https://gravito.ai/fix/${loserResult.reportId}`)} ${c.dim(`— $49, fix ${loserDomainName}`)}`
-    );
-  }
   console.log();
 
   // Next step
